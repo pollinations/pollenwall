@@ -11,9 +11,9 @@
     - [Build from source](#build-from-source)
   - [Usage](#usage)
     - [Command Line Arguments](#command-line-arguments)
-- [App Folder](#app-folder)
-- [Road Map](#road-map)
-- [Changelog](#changelog)
+  - [App Folder](#app-folder)
+  - [Road Map](#road-map)
+  - [Changelog](#changelog)
   - [License](#license)
   - [Copyright](#copyright)
 
@@ -72,11 +72,11 @@ pollenwall [FLAGS] [OPTIONS]
                         "--home <absolute-path-to-your-home-directory>"
 ```
 
-# App Folder
+## App Folder
 
 App folder where `pollenwall` stores the pollens is located in your home directory with the name `.pollen_wall`.
 
-# Road Map
+## Road Map
 
 - [ ] Download other artifacts about a done pollen
 - [ ] Show processing pollens in the app output
@@ -88,7 +88,7 @@ App folder where `pollenwall` stores the pollens is located in your home directo
 - [ ] Add a run at startup option
 - [ ] Publish to package managers for easy installation
 
-# Changelog
+## Changelog
 
 All notable changes to this project will be documented under this part.
 
