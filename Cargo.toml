@@ -5,11 +5,11 @@ authors = ["alisomay <alisomay@runbox.com>"]
 edition = "2021"
 license = "MIT"
 description = "A cute app which sets your wallpaper according to pollens."
-# homepage = ""
-# repository = ""
-# documentation = ""
-keywords = ["pollinsations", "pollen", "generative art", "ai", "gan"]
-categories = ["ai", "commandline app", "art"]
+homepage = "https://github.com/pollinations/pollenwall"
+repository = "https://github.com/pollinations/pollenwall"
+documentation = "https://github.com/pollinations/pollenwall#readme"
+keywords = ["pollinations", "pollen", "generative art", "ai", "GAN"]
+categories = ["ai", "wallpaper", "art"]
 
 [dependencies]
 ipfs-api = "0.14"

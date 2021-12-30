@@ -1,6 +1,6 @@
 # pollenwall
 
-<details>
+<details open>
   <summary>Table of Contents</summary>
 
 - [pollenwall](#pollenwall)
@@ -33,6 +33,9 @@ Support will be expanded in the near future.
 After downloading, add it to an appropriate place in your file system which is included in your `PATH` variable and run `pollenwall` in command line.
 
 If you wish you can navigate to the folder where `pollenwall` is and run it like the following `./pollenwall`.
+
+If mac doesn't let you run the app please remove the extended attributes on the app.
+`xattr -d com.apple.quarantine <path-to-app>`
 
 ### Binary releases
 
