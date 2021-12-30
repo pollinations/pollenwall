@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script will be deprecated soon and replaced with conventional methods.
+# This script will be deprecated soon and replaced with cargo make.
 
 echo "Building with a fat binary with release profile for Mac.."
 # silence errors
@@ -9,7 +9,7 @@ mkdir build
 cargo build --target=aarch64-apple-darwin --release
 cargo build --target=x86_64-apple-darwin --release
 lipo -create target/aarch64-apple-darwin/release/pollenwall target/x86_64-apple-darwin/release/pollenwall -output build/pollenwall
-zip -r build/pollenwall-x86_x64-aarch64-apple-darwin.zip pollenwall
+zip -r build/pollenwall-x86_x64-aarch64-apple-darwin.zip build/pollenwall
 rm build/pollenwall 2>/dev/null
 echo "Done!"
 

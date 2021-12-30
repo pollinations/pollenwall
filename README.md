@@ -25,8 +25,8 @@
 
 ## Support
 
-Currently `pollenwall` only supports x86 and ARM mac computers.
-Support will be expanded in the near future.
+Currently `pollenwall` only supports x86 and ARM mac computers and x86 Windows computers.
+Support will be expanded in very near future.
 
 ## Installation
 
