@@ -21,4 +21,4 @@ clap = "2.33.3"
 console = "0.15.0"
 crossterm = "0.22.1"
 dirs = "4.0.0"
-
+wallpaper = { version = "3", features = ["from_url"] }

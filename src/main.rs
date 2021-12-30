@@ -1,15 +1,21 @@
 mod tui;
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use dirs::home_dir;
 use ipfs_api::{
     response::{FileLsResponse, IpfsHeader},
     IpfsApi, IpfsClient, TryFromUri,
 };
 use multibase::Base;
-use std::{collections::HashMap, fs, path::PathBuf, process::Command};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
+use wallpaper;
 
 use clap::{App, Arg};
 use crossterm::style::Stylize;
@@ -197,7 +203,7 @@ async fn main() -> Result<()> {
                         let topic = get_current_topic(&res.topic_ids.unwrap());
 
                         match &*topic {
-                            "done_pollen" => {
+                            "processing_pollen" => {
                                 // Get the cid of `<hash>/input` which will always be constant for a pollen throughout its evolution.
                                 // I'll refer it as uuid from now on.
                                 if let Ok(res) =
@@ -271,32 +277,71 @@ async fn main() -> Result<()> {
                                                     cnt += 1;
                                                 }
 
-                                                // Set the wallpaper
-                                                set_wallpaper_with_apple_script(file_path)?;
+                                                // Close file
+                                                file.shutdown().await?;
 
-                                                // Update pollen info and notify user
+                                                // Set wallpaper
+                                                let wallpaper_path =
+                                                    String::from(file_path.to_string_lossy());
+                                                let cid = header.hash.clone();
+                                                tokio::spawn(async move {
+                                                    // We need to delay setting the wallpaper a little for Windows
+                                                    // or there will be a black screen set.
+                                                    tokio::time::sleep(
+                                                        tokio::time::Duration::from_millis(100),
+                                                    )
+                                                    .await;
+
+                                                    match wallpaper::set_from_path(&wallpaper_path)
+                                                    {
+                                                        // Notify user
+                                                        Ok(_) => {
+                                                            println!(
+                                                                "{}",
+                                                                "Wallpaper set with the new pollen!"
+                                                                    .magenta()
+                                                            );
+                                                            println!(
+                                                                "{}{}",
+                                                                "You may find this pollen at: "
+                                                                    .yellow(),
+                                                                format!(
+                                                                    "https://ipfs.io/ipfs/{}",
+                                                                    &cid
+                                                                )
+                                                            );
+                                                        }
+                                                        Err(err) => {
+                                                            eprintln!(
+                                                                "{}{}",
+                                                                " Failed to set wallpaper: ".red(),
+                                                                err,
+                                                            );
+                                                        }
+                                                    }
+                                                });
+
+                                                // Update pollen info
                                                 if let Some(pollen) = pollens.get_mut(pollen_uuid) {
                                                     pollen.status =
                                                         PollenStatus::OnceSetAsWallpaper;
                                                     pollen.last_polled_pic =
                                                         Some(PolledPicInfo::from(header));
-
-                                                    println!(
-                                                        "{}",
-                                                        "Wallpaper set with the new pollen!"
-                                                            .magenta()
-                                                    );
-                                                    println!(
-                                                        "{}{}",
-                                                        "You may find this pollen at: ".yellow(),
-                                                        format!(
-                                                            "https://ipfs.io/ipfs/{}",
-                                                            pollen.hash_of_current_iteration
-                                                        )
-                                                    );
-
-                                                    // TODO: Download the video result maybe?
                                                 }
+
+                                                // TODO: Download the video result maybe?
+
+                                                // TODO: Refactor this
+                                                // Delete pollen from storage after some time
+                                                let wallpaper_path =
+                                                    String::from(file_path.to_string_lossy());
+                                                tokio::spawn(async move {
+                                                    tokio::time::sleep(
+                                                        tokio::time::Duration::from_millis(4000),
+                                                    )
+                                                    .await;
+                                                    tokio::fs::remove_file(wallpaper_path).await
+                                                });
                                             }
                                         }
                                     }
@@ -307,7 +352,9 @@ async fn main() -> Result<()> {
                                 // Something interesting might be done later.
                             }
                             // We're not subscribing to any other topics.
-                            _ => unreachable!(),
+                            _ => {
+                                println!("{}{}", "Unknown topic: ".red(), topic);
+                            }
                         }
                     }
                 }
@@ -373,15 +420,4 @@ fn get_the_latest_image_according_to_numbering(
         // We only need the header
         .0;
     result
-}
-
-fn set_wallpaper_with_apple_script(path: PathBuf) -> Result<()> {
-    Command::new("osascript")
-        .arg("-e")
-        .arg(format!(
-            "tell application \"System Events\" to tell every desktop to set picture to \"{}\"",
-            path.as_path().to_str().unwrap()
-        ))
-        .output()?;
-    Ok(())
 }

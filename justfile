@@ -1,2 +1,2 @@
-build_mac:
-  ./release_mac.sh
+release:
+  ./release.sh
