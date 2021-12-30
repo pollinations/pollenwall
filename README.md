@@ -83,8 +83,8 @@ App folder where `pollenwall` stores the pollens is located in your home directo
 
 - [ ] Download other artifacts about a done pollen
 - [ ] Show processing pollens in the app output
-- [ ] Make pollen storage volatile
-- [ ] Support Windows
+- [x] Make pollen storage volatile
+- [x] Support Windows
 - [ ] Support Linux
 - [ ] Give granular options about which wallpapers to set
 - [ ] Support video or `GIF` wall papers in supported platforms
