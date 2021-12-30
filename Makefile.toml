@@ -106,7 +106,8 @@ args = [
 dependencies = [
   "build-aarch64-apple-darwin",
   "build-x86_64-apple-darwin",
-  "universal-binary",
+  "create-dir-for-universal-binary",
+  "make-universal-binary",
   "compress-mac",
 ]
 
@@ -118,13 +119,18 @@ args = ["build", "--target", "aarch64-apple-darwin", "--release"]
 command = "cargo"
 args = ["build", "--target", "x86_64-apple-darwin", "--release"]
 
-[tasks.universal-binary]
+[tasks.create-dir-for-universal-binary]
+script = '''
+mkdir -p target/universal-binary
+'''
+
+[tasks.make-universal-binary]
 command = "lipo"
-args = ["-create", "target/aarch64-apple-darwin/release/pollenwall", "target/x86_64-apple-darwin/release/pollenwall", "-output", "target/pollenwall"]
+args = ["-create", "target/aarch64-apple-darwin/release/pollenwall", "target/x86_64-apple-darwin/release/pollenwall", "-output", "target/universal-binary/pollenwall"]
 
 [tasks.compress-mac]
-command = "zip"
-args = ["-r", "target/pollenwall-apple-darwin.zip", "target/pollenwall"]
+command = "tar"
+args = ["-zcvf", "target/pollenwall-universal-mac.tar.gz", "-C", "target/universal-binary", "pollenwall"]
 
 [tasks.build-windows]
 dependencies = [
@@ -140,10 +146,9 @@ export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
 cargo build --target=x86_64-pc-windows-gnu --release
 '''
 
-
 [tasks.compress-windows]
-command = "zip"
-args = ["-r", "target/pollenwall-x86_64-pc-windows-gnu.zip", "target/x86_64-pc-windows-gnu/release/pollenwall.exe"]
+command = "tar"
+args = ["-zcvf", "target/pollenwall-x86_64-windows.tar.gz", "-C", "target/x86_64-pc-windows-gnu/release", "pollenwall.exe"]
 
 [tasks.build-linux]
 dependencies = [
@@ -219,10 +224,10 @@ dependencies = [
 ]
 
 [tasks.compress-x86_64-unknown-linux-gnu]
-command = "zip"
-args = ["-r", "target/pollenwall-x86_64-unknown-linux-gnu.zip", "target/x86_64-unknown-linux-gnu/release/pollenwall"]
+command = "tar"
+args = ["-zcvf", "target/pollenwall-x86_64-linux.tar.gz", "-C", "target/x86_64-unknown-linux-gnu/release", "pollenwall"]
 
 [tasks.compress-aarch64-unknown-linux-gnu]
-command = "zip"
-args = ["-r", "target/pollenwall-aarch64-unknown-linux-gnu.zip", "target/aarch64-unknown-linux-gnu/release/pollenwall"]
+command = "tar"
+args = ["-zcvf", "target/pollenwall-arm64-linux.tar.gz", "-C", "target/aarch64-unknown-linux-gnu/release", "pollenwall"]
 
