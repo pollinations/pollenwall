@@ -45,9 +45,47 @@ Check the [releases page](https://github.com/pollinations/pollenwall/releases) t
 
 You need [Rust](https://www.rust-lang.org/tools/install) to be installed on your system to build `pollenwall`.
 
-For doing a debug build just run `cargo run` in repository root.
+For doing a debug build just run `cargo build` in repository root.
+For doing a release build just run `cargo build --release` in repository root.
 
-For building a fat binary for mac, either run `just build_mac` if you have [just](https://github.com/casey/just) installed or wun the shell script manually like the following `./build_mac.sh`.
+> I have only tested building on an arm based mac, if you have issues building or running on other platforms please create an issue and I'll test and add instructions.
+
+If you're using a mac and want to cross compile to all supported platforms as well as build a universal binary for mac you may use [cargo-make](https://github.com/sagiegurari/cargo-make).
+
+```bash
+cargo install --force cargo-make
+```
+
+Setup your environment
+
+```bash
+cargo make install-targets
+cargo make setup-cross-compilation-environment-mac-host
+```
+
+Build for all supported platforms
+
+```bash
+cargo make build
+```
+
+> For more granular control you may check `Makefile.toml`
+
+Alternatively you may use [just](https://github.com/casey/just)
+
+Setup your environment
+
+```bash
+just prepare-mac
+```
+
+Build for all supported platforms
+
+```bash
+just build
+```
+
+Outputs could be found in `target` folder.
 
 ## Usage
 

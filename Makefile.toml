@@ -133,8 +133,13 @@ dependencies = [
 ]
 
 [tasks.build-x86_64-pc-windows-gnu]
-command = "cargo"
-args = ["build", "--target", "x86_64-pc-windows-gnu", "--release"]
+script = '''
+export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
+
+# Build 
+cargo build --target=x86_64-pc-windows-gnu --release
+'''
+
 
 [tasks.compress-windows]
 command = "zip"
@@ -158,9 +163,9 @@ cp $(pwd)/target/usr/include/x86_64-linux-gnu/openssl/opensslconf.h $(pwd)/targe
 
 # Point to openssl
 
-export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_DIR="$(pwd)/target/usr/"
-export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR="$(pwd)/target/usr/lib/x86_64-linux-gnu/"
-export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR="$(pwd)/target/usr/include"
+export x86_64_UNKNOWN_LINUX_GNU_OPENSSL_DIR="$(pwd)/target/usr/"
+export x86_64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR="$(pwd)/target/usr/lib/x86_64-linux-gnu/"
+export x86_64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR="$(pwd)/target/usr/include"
 export OPENSSL_DIR="$(pwd)/target/usr/"
 export OPENSSL_LIB_DIR="$(pwd)/target/usr/lib/x86_64-linux-gnu/"
 export OPENSSL_INCLUDE_DIR="$(pwd)/target/usr/include"
