@@ -1,10 +1,16 @@
-## About
-
-**pollenwall** is a little command line app which sets your wallpaper with incoming [CLIP-Guided VQGAN](https://pollinations.ai/p/QmScDZ61x3AQbV6NJ9Wxb6VDTfprkPMRGyWM25iQ2xgFiA/create) pollens once they arrive from [pollinations.ai](https://pollinations.ai/c/Anything).
+# pollenwall
 
 <details>
   <summary>Table of Contents</summary>
 
+- [pollenwall](#pollenwall)
+  - [About](#about)
+  - [Support](#support)
+  - [Installation](#installation)
+    - [Binary releases](#binary-releases)
+    - [Build from source](#build-from-source)
+  - [Usage](#usage)
+    - [Command Line Arguments](#command-line-arguments)
 - [App Folder](#app-folder)
 - [Road Map](#road-map)
 - [Changelog](#changelog)
@@ -12,6 +18,10 @@
   - [Copyright](#copyright)
 
 </details>
+
+## About
+
+**pollenwall** is a little command line app which sets your wallpaper with incoming [CLIP-Guided VQGAN](https://pollinations.ai/p/QmScDZ61x3AQbV6NJ9Wxb6VDTfprkPMRGyWM25iQ2xgFiA/create) pollens once they arrive from [pollinations.ai](https://pollinations.ai/c/Anything).
 
 ## Support
 
