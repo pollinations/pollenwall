@@ -203,7 +203,7 @@ async fn main() -> Result<()> {
                         let topic = get_current_topic(&res.topic_ids.unwrap());
 
                         match &*topic {
-                            "processing_pollen" => {
+                            "done_pollen" => {
                                 // Get the cid of `<hash>/input` which will always be constant for a pollen throughout its evolution.
                                 // I'll refer it as uuid from now on.
                                 if let Ok(res) =
