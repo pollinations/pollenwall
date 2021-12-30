@@ -1,0 +1,223 @@
+[config]
+default_to_workspace = false
+
+[tasks.ci-fmt]
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.ci-clippy]
+command = "cargo"
+args = ["clippy", "--all-targets", "--all-features"]
+
+[tasks.setup-cross-compilation-environment-mac-host]
+dependencies = [
+  "setup-mac-to-linux-cross-compilation-environment",
+  "setup-mac-to-windows-cross-compilation-environment",
+]
+
+[tasks.setup-mac-to-linux-cross-compilation-environment.env]
+# From time to time the download link gets taken down and needs to be replaced with a new one.
+# Here's where the current download link was found:
+# https://packages.debian.org/buster/amd64/libssl-dev/download
+OPENSSL_AMD64_PACKAGE_NAME = "libssl-dev_1.1.1d-0+deb10u7_amd64.deb"
+OPENSSL_ARM64_PACKAGE_NAME = "libssl-dev_1.1.1d-0+deb10u7_arm64.deb"
+OPENSSL_AMD64_DOWNLOAD_URL = "http://ftp.us.debian.org/debian/pool/main/o/openssl/${OPENSSL_AMD64_PACKAGE_NAME}"
+OPENSSL_ARM64_DOWNLOAD_URL = "http://ftp.us.debian.org/debian/pool/main/o/openssl/${OPENSSL_ARM64_PACKAGE_NAME}"
+
+
+[tasks.setup-mac-to-linux-cross-compilation-environment]
+script = '''
+    set -e
+
+    # https://github.com/messense/homebrew-macos-cross-toolchains
+    
+    # Install a pre-built cross compiler
+    brew tap messense/macos-cross-toolchains
+    
+    brew install x86_64-unknown-linux-gnu
+    brew install aarch64-unknown-linux-gnu
+
+    mkdir -p target
+    cd target
+
+    # Get openssl amd64
+   
+    curl -O ${OPENSSL_AMD64_DOWNLOAD_URL}
+    ar p ${OPENSSL_AMD64_PACKAGE_NAME} data.tar.xz | tar xvf -
+    rm -rf ${OPENSSL_AMD64_PACKAGE_NAME}
+
+    # Get openssl arm64
+    
+    curl -O ${OPENSSL_ARM64_DOWNLOAD_URL}
+    ar p ${OPENSSL_ARM64_PACKAGE_NAME} data.tar.xz | tar xvf -
+    rm -rf ${OPENSSL_ARM64_PACKAGE_NAME}
+    
+    cd ..
+'''
+
+[tasks.prepare-mac]
+dependencies = [
+    "install-targets",
+    "setup-cross-compilation-environment-mac-host",
+]
+
+[tasks.build]
+dependencies = [
+    "build-mac",
+    "build-windows",
+    "build-linux",
+]
+
+[tasks.setup-mac-to-windows-cross-compilation-environment]
+command = "brew"
+args = ["install", "mingw-w64"]
+
+[tasks.install-targets]
+dependencies = [
+  "install-targets-linux",
+  "install-targets-windows",
+  "install-targets-mac",
+]
+
+[tasks.install-targets-linux]
+command = "rustup"
+args = [
+  "target", "add",
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+]
+
+[tasks.install-targets-windows]
+command = "rustup"
+args = [
+  "target", "add",
+  "x86_64-pc-windows-gnu",
+]
+
+[tasks.install-targets-mac]
+command = "rustup"
+args = [
+  "target", "add",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+]
+
+[tasks.build-mac]
+dependencies = [
+  "build-aarch64-apple-darwin",
+  "build-x86_64-apple-darwin",
+  "universal-binary",
+  "compress-mac",
+]
+
+[tasks.build-aarch64-apple-darwin]
+command = "cargo"
+args = ["build", "--target", "aarch64-apple-darwin", "--release"]
+
+[tasks.build-x86_64-apple-darwin]
+command = "cargo"
+args = ["build", "--target", "x86_64-apple-darwin", "--release"]
+
+[tasks.universal-binary]
+command = "lipo"
+args = ["-create", "target/aarch64-apple-darwin/release/pollenwall", "target/x86_64-apple-darwin/release/pollenwall", "-output", "target/pollenwall"]
+
+[tasks.compress-mac]
+command = "zip"
+args = ["-r", "target/pollenwall-apple-darwin.zip", "target/pollenwall"]
+
+[tasks.build-windows]
+dependencies = [
+  "build-x86_64-pc-windows-gnu",
+  "compress-windows",
+]
+
+[tasks.build-x86_64-pc-windows-gnu]
+command = "cargo"
+args = ["build", "--target", "x86_64-pc-windows-gnu", "--release"]
+
+[tasks.compress-windows]
+command = "zip"
+args = ["-r", "target/pollenwall-x86_64-pc-windows-gnu.zip", "target/x86_64-pc-windows-gnu/release/pollenwall.exe"]
+
+[tasks.build-linux]
+dependencies = [
+  "build-x86_64-unknown-linux-gnu",
+  "build-aarch64-unknown-linux-gnu",
+  "compress-linux",
+]
+
+[tasks.build-x86_64-unknown-linux-gnu]
+script = '''
+
+# Copy opensslconf.h to its expected place.
+# Maybe there is a better fix for this but this is what I can think of at the moment.
+# There are multiples of this header file for each platform.
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=733644
+cp $(pwd)/target/usr/include/x86_64-linux-gnu/openssl/opensslconf.h $(pwd)/target/usr/include/openssl/opensslconf.h
+
+# Point to openssl
+
+export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_DIR="$(pwd)/target/usr/"
+export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR="$(pwd)/target/usr/lib/x86_64-linux-gnu/"
+export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR="$(pwd)/target/usr/include"
+export OPENSSL_DIR="$(pwd)/target/usr/"
+export OPENSSL_LIB_DIR="$(pwd)/target/usr/lib/x86_64-linux-gnu/"
+export OPENSSL_INCLUDE_DIR="$(pwd)/target/usr/include"
+
+# Point to installed toolchains from 
+# https://github.com/messense/homebrew-macos-cross-toolchains
+
+export CC_x86_64_unknown_linux_gnu=x86_64-unknown-linux-gnu-gcc
+export CXX_x86_64_unknown_linux_gnu=x86_64-unknown-linux-gnu-g++
+export AR_x86_64_unknown_linux_gnu=x86_64-unknown-linux-gnu-ar
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-unknown-linux-gnu-gcc
+
+# Build 
+cargo build --target=x86_64-unknown-linux-gnu --release
+'''
+
+[tasks.build-aarch64-unknown-linux-gnu]
+script = '''
+
+# Copy opensslconf.h to its expected place.
+# Maybe there is a better fix for this but this is what I can think of at the moment.
+# There are multiples of this header file for each platform.
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=733644
+cp $(pwd)/target/usr/include/aarch64-linux-gnu/openssl/opensslconf.h $(pwd)/target/usr/include/openssl/opensslconf.h
+
+# Point to openssl
+
+export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_DIR="$(pwd)/target/usr/"
+export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR="$(pwd)/target/usr/lib/aarch64-linux-gnu/"
+export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR="$(pwd)/target/usr/include"
+export OPENSSL_DIR="$(pwd)/target/usr/"
+export OPENSSL_LIB_DIR="$(pwd)/target/usr/lib/x86_64-linux-gnu/"
+export OPENSSL_INCLUDE_DIR="$(pwd)/target/usr/include"
+
+# Point to installed toolchains from 
+# https://github.com/messense/homebrew-macos-cross-toolchains
+
+export CC_aarch64_unknown_linux_gnu=aarch64-unknown-linux-gnu-gcc
+export CXX_aarch64_unknown_linux_gnu=aarch64-unknown-linux-gnu-g++
+export AR_aarch64_unknown_linux_gnu=aarch64-unknown-linux-gnu-ar
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-unknown-linux-gnu-gcc
+
+# Build 
+cargo build --target=aarch64-unknown-linux-gnu --release
+'''
+
+[tasks.compress-linux]
+dependencies = [
+  "compress-x86_64-unknown-linux-gnu",
+  "compress-aarch64-unknown-linux-gnu",
+]
+
+[tasks.compress-x86_64-unknown-linux-gnu]
+command = "zip"
+args = ["-r", "target/pollenwall-x86_64-unknown-linux-gnu.zip", "target/x86_64-unknown-linux-gnu/release/pollenwall"]
+
+[tasks.compress-aarch64-unknown-linux-gnu]
+command = "zip"
+args = ["-r", "target/pollenwall-aarch64-unknown-linux-gnu.zip", "target/aarch64-unknown-linux-gnu/release/pollenwall"]
+
