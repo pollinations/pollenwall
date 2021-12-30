@@ -1,21 +1,15 @@
 mod tui;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use dirs::home_dir;
 use ipfs_api::{
     response::{FileLsResponse, IpfsHeader},
     IpfsApi, IpfsClient, TryFromUri,
 };
 use multibase::Base;
-use std::{
-    collections::HashMap,
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
-use wallpaper;
 
 use clap::{App, Arg};
 use crossterm::style::Stylize;
