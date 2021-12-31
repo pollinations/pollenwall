@@ -16,6 +16,7 @@ use crossterm::style::Stylize;
 use tui::{Tui, BEE, BRUSH};
 const APP_FOLDER_NAME: &str = ".pollen_wall";
 const DEFAULT_POLLINATIONS_MULTIADDR: &str = "/ip4/65.108.44.19/tcp/5005";
+const WALLPAPER_SET_TIMEOUT: u64 = 100;
 
 #[derive(Debug, PartialEq)]
 enum PollenStatus {
@@ -173,6 +174,7 @@ async fn main() -> Result<()> {
     let done_subscription = client.pubsub_sub("done_pollen", true);
     let mut merged = done_subscription.merge(processing_subscription);
     let mut pollens = HashMap::<String, PollenInfo>::new();
+    let mut last_wallpaper_path: Option<PathBuf> = None;
 
     println!(
         "{}{}{}",
@@ -278,11 +280,14 @@ async fn main() -> Result<()> {
                                                 let wallpaper_path =
                                                     String::from(file_path.to_string_lossy());
                                                 let cid = header.hash.clone();
+
                                                 tokio::spawn(async move {
                                                     // We need to delay setting the wallpaper a little for Windows
                                                     // or there will be a black screen set.
                                                     tokio::time::sleep(
-                                                        tokio::time::Duration::from_millis(100),
+                                                        tokio::time::Duration::from_millis(
+                                                            WALLPAPER_SET_TIMEOUT,
+                                                        ),
                                                     )
                                                     .await;
 
@@ -324,18 +329,36 @@ async fn main() -> Result<()> {
                                                 }
 
                                                 // TODO: Download the video result maybe?
+                                                // Schedule to delete previous pollen from storage after some time.
+                                                if let Some(path) = last_wallpaper_path {
+                                                    // Not the same path
+                                                    if path.as_path() != file_path.as_path() {
+                                                        let path_to_delete =
+                                                            String::from(path.to_string_lossy());
+                                                        tokio::spawn(async move {
+                                                            tokio::time::sleep(
+                                                                tokio::time::Duration::from_millis(
+                                                                    WALLPAPER_SET_TIMEOUT + 100,
+                                                                ),
+                                                            )
+                                                            .await;
 
-                                                // TODO: Refactor this
-                                                // Delete pollen from storage after some time
-                                                let wallpaper_path =
-                                                    String::from(file_path.to_string_lossy());
-                                                tokio::spawn(async move {
-                                                    tokio::time::sleep(
-                                                        tokio::time::Duration::from_millis(4000),
-                                                    )
-                                                    .await;
-                                                    tokio::fs::remove_file(wallpaper_path).await
-                                                });
+                                                            if let Err(err) =
+                                                                tokio::fs::remove_file(
+                                                                    path_to_delete,
+                                                                )
+                                                                .await
+                                                            {
+                                                                eprintln!(
+                                                                "{}{}",
+                                                                "Failed to delete previous pollen: ".red(),
+                                                                err,
+                                                            );
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                                last_wallpaper_path = Some(file_path);
                                             }
                                         }
                                     }
