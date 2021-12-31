@@ -3,11 +3,15 @@ mod tui;
 use anyhow::{bail, Result};
 use dirs::home_dir;
 use ipfs_api::{
-    response::{FileLsResponse, IpfsHeader},
+    response::{BlockStatResponse, FileLsResponse, IpfsHeader},
     IpfsApi, IpfsClient, TryFromUri,
 };
 use multibase::Base;
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
 
@@ -17,6 +21,14 @@ use tui::{Tui, BEE, BRUSH};
 const APP_FOLDER_NAME: &str = ".pollen_wall";
 const DEFAULT_POLLINATIONS_MULTIADDR: &str = "/ip4/65.108.44.19/tcp/5005";
 const WALLPAPER_SET_TIMEOUT: u64 = 100;
+const HEARTBEAT: &str = "HEARTBEAT";
+
+#[derive(Debug, PartialEq, Clone)]
+enum Topic {
+    ProcessingPollen,
+    DonePollen,
+    Unknown,
+}
 
 #[derive(Debug, PartialEq)]
 enum PollenStatus {
@@ -31,9 +43,9 @@ struct PollenInfo {
     #[allow(dead_code)]
     id: String,
     //
-    source: String,
+    topic: Topic,
     hash_of_current_iteration: String,
-    last_polled_pic: Option<PolledPicInfo>,
+    last_polled_evolution: Option<PolledEvolutionInfo>,
     status: PollenStatus,
 }
 
@@ -41,9 +53,9 @@ impl Default for PollenInfo {
     fn default() -> Self {
         PollenInfo {
             id: String::new(),
-            source: String::new(),
+            topic: Topic::Unknown,
             hash_of_current_iteration: String::new(),
-            last_polled_pic: None,
+            last_polled_evolution: None,
             status: PollenStatus::Processing,
         }
     }
@@ -51,27 +63,27 @@ impl Default for PollenInfo {
 
 impl PollenInfo {
     #[allow(dead_code)]
-    fn new(id: String, source: String, hash_of_current_iteration: String) -> Self {
+    fn new(id: String, topic: Topic, hash_of_current_iteration: String) -> Self {
         Self {
             id,
-            source,
+            topic,
             hash_of_current_iteration,
-            last_polled_pic: None,
+            last_polled_evolution: None,
             status: PollenStatus::Processing,
         }
     }
 
     fn with_status(
         id: String,
-        source: String,
+        topic: Topic,
         hash_of_current_iteration: String,
         status: PollenStatus,
     ) -> Self {
         Self {
             id,
-            source,
+            topic,
             hash_of_current_iteration,
-            last_polled_pic: None,
+            last_polled_evolution: None,
             status,
         }
     }
@@ -80,21 +92,21 @@ impl PollenInfo {
 #[derive(Debug, Default)]
 #[allow(dead_code)]
 // Currently not used but maybe used later
-struct PolledPicInfo {
+struct PolledEvolutionInfo {
     hash: String,
     name: String,
     size: u64,
 }
 
-impl PolledPicInfo {
+impl PolledEvolutionInfo {
     fn new(hash: String, name: String, size: u64) -> Self {
-        PolledPicInfo { hash, name, size }
+        PolledEvolutionInfo { hash, name, size }
     }
 }
 
-impl From<&IpfsHeader> for PolledPicInfo {
+impl From<&IpfsHeader> for PolledEvolutionInfo {
     fn from(header: &IpfsHeader) -> Self {
-        PolledPicInfo::new(header.hash.clone(), header.name.clone(), header.size)
+        PolledEvolutionInfo::new(header.hash.clone(), header.name.clone(), header.size)
     }
 }
 
@@ -191,187 +203,139 @@ async fn main() -> Result<()> {
                     // Decode base64 response
                     let msg = decode_msg(msg)?;
                     // Filter `HEARTBEAT` messages in the stream
-                    if !msg.contains("HEARTBEAT") {
+                    if !msg.contains(HEARTBEAT) {
                         let hash = msg;
+
                         // Path for the current pollen output
                         let path = format!("/ipfs/{}/output", &hash);
+
                         // Unwrap is safe here because there will always be a topic.
-                        let topic = get_current_topic(&res.topic_ids.unwrap());
+                        let topic = match &*get_current_topic(&res.topic_ids.unwrap()) {
+                            "done_pollen" => Topic::DonePollen,
+                            "processing_pollen" => Topic::ProcessingPollen,
+                            _ => Topic::Unknown,
+                        };
 
-                        match &*topic {
-                            "done_pollen" => {
-                                // Get the cid of `<hash>/input` which will always be constant for a pollen throughout its evolution.
-                                // I'll refer it as uuid from now on.
-                                if let Ok(res) =
-                                    client.block_stat(&*format!("{}/input", &hash)).await
-                                {
-                                    let pollen_uuid = &res.key;
+                        // Ignore unknown topics
+                        if let Topic::Unknown = topic {
+                            continue;
+                        }
 
-                                    if let Some(pollen) = pollens.get_mut(pollen_uuid) {
-                                        // Pollen is being tracked already so update its info
-
-                                        match pollen.status {
-                                            // Ignore pollen if it once set as wallpaper
-                                            // This would help filtering for duplicate done messages.
-                                            PollenStatus::OnceSetAsWallpaper => {}
-                                            _ => pollen.status = PollenStatus::Done,
+                        // Get pollen uuid
+                        if let Ok(BlockStatResponse {
+                            key: pollen_uuid, ..
+                        }) = client.block_stat(&*format!("{}/input", &hash)).await
+                        {
+                            if let Some(pollen) = pollens.get_mut(&pollen_uuid) {
+                                // Pollen is being tracked already so update its info
+                                match pollen.status {
+                                    // Ignore pollen if it once set as wallpaper
+                                    // This would help filtering for duplicate done messages.
+                                    PollenStatus::OnceSetAsWallpaper => match topic {
+                                        Topic::ProcessingPollen => {
+                                            // TODO: Attaching to a processing pollen logic may go here.
                                         }
-                                        pollen.source = topic.to_owned();
-                                        pollen.hash_of_current_iteration = hash.to_owned();
-                                    } else {
-                                        // Pollen not tracked yet, store it
-                                        // Since it is a done pollen tag it.
-                                        pollens.insert(
-                                            res.key.to_owned(),
-                                            PollenInfo::with_status(
-                                                res.key.to_owned(),
-                                                topic.to_owned(),
-                                                hash.to_owned(),
-                                                PollenStatus::Done,
-                                            ),
-                                        );
-                                    }
-
-                                    // We know that here the hashmap includes this pollen.
-                                    if let PollenStatus::Done =
-                                        pollens.get_mut(pollen_uuid).unwrap().status
-                                    {
-                                        // Find the latest evolution (image) of pollen
-                                        if let Ok(res) = client.file_ls(&path).await {
-                                            if let Some(header) =
-                                                get_the_latest_image_according_to_numbering(&res)
-                                            {
-                                                // It is a CLIP+VQGAN model
-                                                println!("\n{}", "Pollen arrived!".green());
-
-                                                // Make a path in the format of `uuid_name_extension`
-                                                let mut file_path = app_folder_path.clone();
-                                                // TODO: Add the `text_input` somewhere
-                                                file_path.push(format!(
-                                                    "{}_{}",
-                                                    &pollen_uuid, &header.name
-                                                ));
-                                                // Make the file
-                                                let mut file =
-                                                    tokio::fs::File::create(&file_path).await?;
-
-                                                // TODO: This should be unnecessary learn to use Bytes crate see hack below
-                                                let mut cnt = 0;
-
-                                                // Download and write the file
-                                                let mut download_stream = client.get(&header.hash);
-                                                while let Some(Ok(buf)) =
-                                                    download_stream.next().await
-                                                {
-                                                    if cnt == 0 {
-                                                        // Hack, I am too tired to learn to get the contents properly
-                                                        // First 512 bytes shouldn't be written.
-                                                        file.write_all(&buf.slice(512..)).await?;
-                                                    } else {
-                                                        file.write_all(&buf.slice(0..)).await?;
-                                                    }
-                                                    cnt += 1;
-                                                }
-
-                                                // Close file
-                                                file.shutdown().await?;
-
-                                                // Set wallpaper
-                                                let wallpaper_path =
-                                                    String::from(file_path.to_string_lossy());
-                                                let cid = header.hash.clone();
-
-                                                tokio::spawn(async move {
-                                                    // We need to delay setting the wallpaper a little for Windows
-                                                    // or there will be a black screen set.
-                                                    tokio::time::sleep(
-                                                        tokio::time::Duration::from_millis(
-                                                            WALLPAPER_SET_TIMEOUT,
-                                                        ),
-                                                    )
-                                                    .await;
-
-                                                    match wallpaper::set_from_path(&wallpaper_path)
-                                                    {
-                                                        // Notify user
-                                                        Ok(_) => {
-                                                            println!(
-                                                                "{}",
-                                                                "Wallpaper set with the new pollen!"
-                                                                    .magenta()
-                                                            );
-                                                            println!(
-                                                                "{}{}",
-                                                                "You may find this pollen at: "
-                                                                    .yellow(),
-                                                                format!(
-                                                                    "https://ipfs.io/ipfs/{}",
-                                                                    &cid
-                                                                )
-                                                            );
-                                                        }
-                                                        Err(err) => {
-                                                            eprintln!(
-                                                                "{}{}",
-                                                                " Failed to set wallpaper: ".red(),
-                                                                err,
-                                                            );
-                                                        }
-                                                    }
-                                                });
-
-                                                // Update pollen info
-                                                if let Some(pollen) = pollens.get_mut(pollen_uuid) {
-                                                    pollen.status =
-                                                        PollenStatus::OnceSetAsWallpaper;
-                                                    pollen.last_polled_pic =
-                                                        Some(PolledPicInfo::from(header));
-                                                }
-
-                                                // TODO: Download the video result maybe?
-                                                // Schedule to delete previous pollen from storage after some time.
-                                                if let Some(path) = last_wallpaper_path {
-                                                    // Not the same path
-                                                    if path.as_path() != file_path.as_path() {
-                                                        let path_to_delete =
-                                                            String::from(path.to_string_lossy());
-                                                        tokio::spawn(async move {
-                                                            tokio::time::sleep(
-                                                                tokio::time::Duration::from_millis(
-                                                                    WALLPAPER_SET_TIMEOUT + 100,
-                                                                ),
-                                                            )
-                                                            .await;
-
-                                                            if let Err(err) =
-                                                                tokio::fs::remove_file(
-                                                                    path_to_delete,
-                                                                )
-                                                                .await
-                                                            {
-                                                                eprintln!(
-                                                                "{}{}",
-                                                                "Failed to delete previous pollen: ".red(),
-                                                                err,
-                                                            );
-                                                            }
-                                                        });
-                                                    }
-                                                }
-                                                last_wallpaper_path = Some(file_path);
-                                            }
+                                        Topic::DonePollen => {
+                                            // Ignore done pollens which had been already set as wallpaper
+                                            continue;
+                                        }
+                                        _ => unreachable!(),
+                                    },
+                                    // Attaching logic for
+                                    _ => {
+                                        pollen.status = match topic {
+                                            Topic::ProcessingPollen => PollenStatus::Processing,
+                                            Topic::DonePollen => PollenStatus::Done,
+                                            _ => unreachable!(),
                                         }
                                     }
                                 }
+                                pollen.topic = topic.to_owned();
+                                pollen.hash_of_current_iteration = hash.to_owned();
+                            } else {
+                                // Pollen not tracked yet, store it
+                                // Since it is a done pollen tag it.
+                                pollens.insert(
+                                    pollen_uuid.to_owned(),
+                                    PollenInfo::with_status(
+                                        pollen_uuid.to_owned(),
+                                        topic.to_owned(),
+                                        hash.to_owned(),
+                                        match topic {
+                                            Topic::DonePollen => PollenStatus::Done,
+                                            Topic::ProcessingPollen => PollenStatus::Processing,
+                                            _ => unreachable!(),
+                                        },
+                                    ),
+                                );
                             }
-                            "processing_pollen" => {
-                                // Currently ignoring these..
-                                // Something interesting might be done later.
+
+                            // Find the latest evolution (image) of pollen
+                            if let Ok(list_of_output_folder) = client.file_ls(&path).await {
+                                // TODO: Check if it could be destructured
+                                if let Some(pollen_header) =
+                                    get_the_latest_image_according_to_numbering(
+                                        &list_of_output_folder,
+                                    )
+                                {
+                                    // We know that we have registered that pollen here so we can unwrap
+                                    match pollens.get_mut(&pollen_uuid).unwrap().status {
+                                        PollenStatus::Processing => {}
+                                        PollenStatus::Done => {
+                                            println!("\n{}", "Pollen arrived!".green());
+
+                                            // Save pollen
+                                            let mut save_path = app_folder_path.clone();
+                                            save_path.push(&format!(
+                                                "{}_{}",
+                                                &pollen_uuid, &pollen_header.name
+                                            ));
+                                            save_pollen(&client, &pollen_header.hash, &save_path)
+                                                .await?;
+
+                                            // Set wallpaper
+                                            set_wallpaper_with_delay(
+                                                WALLPAPER_SET_TIMEOUT,
+                                                save_path.clone(),
+                                                pollen_header.hash.to_owned(),
+                                            );
+
+                                            // Update pollen info
+                                            if let Some(PollenInfo {
+                                                status,
+                                                last_polled_evolution,
+                                                ..
+                                            }) = pollens.get_mut(&pollen_uuid)
+                                            {
+                                                *status = PollenStatus::OnceSetAsWallpaper;
+                                                *last_polled_evolution =
+                                                    Some(PolledEvolutionInfo::from(pollen_header));
+                                            }
+
+                                            // Remove previous pollen
+                                            if let Some(last_wallpaper_path) = last_wallpaper_path {
+                                                remove_previous_pollen_from_storage_with_delay(
+                                                    &last_wallpaper_path,
+                                                    WALLPAPER_SET_TIMEOUT + 100,
+                                                );
+                                            }
+
+                                            // Set with current wallpaper
+                                            last_wallpaper_path = Some(save_path);
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                } else {
+                                    // Ignore model which is not a CLIP+VQGAN
+                                    continue;
+                                }
+                            } else {
+                                // Couldn't ls the output folder, ignore pollen
+                                continue;
                             }
-                            // We're not subscribing to any other topics.
-                            _ => {
-                                println!("{}{}", "Unknown topic: ".red(), topic);
-                            }
+                        } else {
+                            //Couldn't retrieve pollen uuid, then ignore this pollen.
+                            continue;
                         }
                     }
                 }
@@ -379,10 +343,10 @@ async fn main() -> Result<()> {
             Err(err) => {
                 // Pubsub error
                 eprintln!("{:?}", err);
+                continue;
             }
         }
     }
-    // Hopefully unreachable :)
     Ok(())
 }
 
@@ -437,4 +401,69 @@ fn get_the_latest_image_according_to_numbering(
         // We only need the header
         .0;
     result
+}
+
+async fn save_pollen(client: &IpfsClient, download_hash: &str, save_path: &Path) -> Result<()> {
+    let mut file = tokio::fs::File::create(save_path).await?;
+
+    // TODO: This should be unnecessary learn to use Bytes crate see hack below
+    let mut cnt = 0;
+
+    // Download and write the file
+    let mut download_stream = client.get(download_hash);
+    while let Some(Ok(buf)) = download_stream.next().await {
+        if cnt == 0 {
+            // Hack, I am too tired to learn to get the contents properly
+            // First 512 bytes shouldn't be written.
+            file.write_all(&buf.slice(512..)).await?;
+        } else {
+            file.write_all(&buf.slice(0..)).await?;
+        }
+        cnt += 1;
+    }
+
+    file.shutdown().await?;
+    Ok(())
+}
+
+// TODO: CONTINUE THIS FUNCTION!
+fn set_wallpaper_with_delay(timeout_millis: u64, wallpaper_path: PathBuf, ipfs_hash: String) {
+    tokio::spawn(async move {
+        // We need to delay setting the wallpaper a little for Windows
+        // or there will be a black screen set.
+        tokio::time::sleep(tokio::time::Duration::from_millis(timeout_millis)).await;
+
+        match wallpaper::set_from_path(wallpaper_path.to_str().unwrap()) {
+            // Notify user
+            Ok(_) => {
+                println!("{}", "Wallpaper set with the new pollen!".magenta());
+                println!(
+                    "{}{}",
+                    "You may find this pollen at: ".yellow(),
+                    format!("https://ipfs.io/ipfs/{}", &ipfs_hash)
+                );
+            }
+            Err(err) => {
+                eprintln!("{}{}", " Failed to set wallpaper: ".red(), err,);
+            }
+        }
+    });
+}
+
+fn remove_previous_pollen_from_storage_with_delay(last_wallpaper_path: &Path, delay_millis: u64) {
+    // Delete previous pollen which was set as wallpaper
+    // from storage after some time.
+    // This delay is also needed for linux machines.
+    // Don't await this function.
+
+    // Copy it because we're going to delay it.
+    let path_to_delete = String::from(last_wallpaper_path.to_string_lossy());
+    tokio::spawn(async move {
+        // Wait a little
+        tokio::time::sleep(tokio::time::Duration::from_millis(delay_millis)).await;
+        // Delete the file.
+        if let Err(err) = tokio::fs::remove_file(path_to_delete).await {
+            eprintln!("{}{}", "Failed to delete previous pollen: ".red(), err,);
+        }
+    });
 }
