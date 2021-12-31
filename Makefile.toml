@@ -1,6 +1,8 @@
 [config]
 default_to_workspace = false
 
+# CI
+
 [tasks.ci-fmt]
 command = "cargo"
 args = ["fmt", "--all", "--", "--check"]
@@ -9,11 +11,25 @@ args = ["fmt", "--all", "--", "--check"]
 command = "cargo"
 args = ["clippy", "--all-targets", "--all-features"]
 
+# Prepare compilation environment
+
+[tasks.prepare-mac]
+dependencies = [
+    "install-targets",
+    "setup-cross-compilation-environment-mac-host",
+]
+
+# Cross compilation setup
+
 [tasks.setup-cross-compilation-environment-mac-host]
 dependencies = [
   "setup-mac-to-linux-cross-compilation-environment",
   "setup-mac-to-windows-cross-compilation-environment",
 ]
+
+[tasks.setup-mac-to-windows-cross-compilation-environment]
+command = "brew"
+args = ["install", "mingw-w64"]
 
 [tasks.setup-mac-to-linux-cross-compilation-environment.env]
 # From time to time the download link gets taken down and needs to be replaced with a new one.
@@ -23,7 +39,6 @@ OPENSSL_AMD64_PACKAGE_NAME = "libssl-dev_1.1.1d-0+deb10u7_amd64.deb"
 OPENSSL_ARM64_PACKAGE_NAME = "libssl-dev_1.1.1d-0+deb10u7_arm64.deb"
 OPENSSL_AMD64_DOWNLOAD_URL = "http://ftp.us.debian.org/debian/pool/main/o/openssl/${OPENSSL_AMD64_PACKAGE_NAME}"
 OPENSSL_ARM64_DOWNLOAD_URL = "http://ftp.us.debian.org/debian/pool/main/o/openssl/${OPENSSL_ARM64_PACKAGE_NAME}"
-
 
 [tasks.setup-mac-to-linux-cross-compilation-environment]
 script = '''
@@ -55,28 +70,29 @@ script = '''
     cd ..
 '''
 
-[tasks.prepare-mac]
-dependencies = [
-    "install-targets",
-    "setup-cross-compilation-environment-mac-host",
-]
 
-[tasks.build]
-dependencies = [
-    "build-mac",
-    "build-windows",
-    "build-linux",
-]
-
-[tasks.setup-mac-to-windows-cross-compilation-environment]
-command = "brew"
-args = ["install", "mingw-w64"]
+# Compilation targets
 
 [tasks.install-targets]
 dependencies = [
-  "install-targets-linux",
-  "install-targets-windows",
   "install-targets-mac",
+  "install-targets-windows",
+  "install-targets-linux",
+]
+
+[tasks.install-targets-mac]
+command = "rustup"
+args = [
+  "target", "add",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+]
+
+[tasks.install-targets-windows]
+command = "rustup"
+args = [
+  "target", "add",
+  "x86_64-pc-windows-gnu",
 ]
 
 [tasks.install-targets-linux]
@@ -87,19 +103,13 @@ args = [
   "aarch64-unknown-linux-gnu",
 ]
 
-[tasks.install-targets-windows]
-command = "rustup"
-args = [
-  "target", "add",
-  "x86_64-pc-windows-gnu",
-]
+# Compilation
 
-[tasks.install-targets-mac]
-command = "rustup"
-args = [
-  "target", "add",
-  "aarch64-apple-darwin",
-  "x86_64-apple-darwin",
+[tasks.build]
+dependencies = [
+    "build-mac",
+    "build-windows",
+    "build-linux",
 ]
 
 [tasks.build-mac]
