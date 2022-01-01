@@ -100,7 +100,8 @@ pollenwall [FLAGS] [OPTIONS]
 **Flags:**
 
 ```
--c, --clean      Remove pollens in "~/.pollen_wall" directory.
+-a, --attach     Attach to a random processing pollen until its evolution is done.
+-c, --clean      Remove images in "~/.pollen_wall" directory.
 -h, --help       Prints help information
 -V, --version    Prints version information
 ```
@@ -120,7 +121,8 @@ App folder where `pollenwall` stores the pollens is located in your home directo
 ## Road Map
 
 - [ ] Download other artifacts about a pollens (in progress)
-- [ ] Show processing pollens in the app output (maybe)
+- [ ] Give option to exclude or include different models in attach mode
+- [x] Show the count of processing pollens in the app output
 - [x] Make pollen storage volatile
 - [x] Support Windows
 - [x] Support Linux
@@ -132,6 +134,15 @@ App folder where `pollenwall` stores the pollens is located in your home directo
 ## Changelog
 
 All notable changes to this project will be documented under this part.
+
+- 0.2.0
+  - Count of processing pollens in the output
+  - Attach mode
+  - Volatile storage
+  - Support Windows
+  - Support Linux (x86_64, ARM)
+- 0.1.0
+  - Initial release
 
 ## License
 

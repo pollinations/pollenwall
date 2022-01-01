@@ -21,7 +21,7 @@ use crossterm::style::Stylize;
 use tui::{Tui, BEE, BRUSH};
 const APP_FOLDER_NAME: &str = ".pollen_wall";
 const DEFAULT_POLLINATIONS_MULTIADDR: &str = "/ip4/65.108.44.19/tcp/5005";
-const WALLPAPER_SET_TIMEOUT: u64 = 100;
+const WALLPAPER_SET_DELAY: u64 = 100;
 const HEARTBEAT: &str = "HEARTBEAT";
 
 #[derive(Debug, PartialEq, Clone)]
@@ -42,6 +42,7 @@ enum PollenStatus {
 enum Model {
     WikiArt,
     VitB32,
+    GuidedDiffusion,
     Unknown,
 }
 
@@ -155,7 +156,7 @@ async fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name("clean")
-                .help("Remove pollens in \"~/.pollen_wall\" directory.")
+                .help("Remove images in \"~/.pollen_wall\" directory.")
                 .short("c")
                 .long("clean")
                 .takes_value(false),
@@ -334,6 +335,10 @@ async fn main() -> Result<()> {
                                         &list_of_output_folder,
                                     )
                                 {
+                                    let processing_pollens_count = pollens
+                                        .values()
+                                        .filter(|pollen| pollen.status == PollenStatus::Processing)
+                                        .count();
                                     // We know that we have registered that pollen here so we can unwrap
                                     let pollen = pollens.get_mut(&pollen_uuid).unwrap();
                                     match pollen.status {
@@ -367,9 +372,9 @@ async fn main() -> Result<()> {
 
                                                         // Set wallpaper
                                                         set_wallpaper_with_delay(
-                                                            WALLPAPER_SET_TIMEOUT,
                                                             save_path.clone(),
                                                             pollen_header.hash.to_owned(),
+                                                            processing_pollens_count,
                                                         );
 
                                                         // Update pollen info
@@ -434,9 +439,9 @@ async fn main() -> Result<()> {
 
                                             // Set wallpaper
                                             set_wallpaper_with_delay(
-                                                WALLPAPER_SET_TIMEOUT,
                                                 save_path.clone(),
                                                 pollen_header.hash.to_owned(),
+                                                processing_pollens_count,
                                             );
 
                                             // Update pollen info
@@ -567,11 +572,15 @@ async fn save_pollen(
     Ok(None)
 }
 
-fn set_wallpaper_with_delay(timeout_millis: u64, wallpaper_path: PathBuf, ipfs_hash: String) {
+fn set_wallpaper_with_delay(
+    wallpaper_path: PathBuf,
+    ipfs_hash: String,
+    processing_pollens_count: usize,
+) {
     tokio::spawn(async move {
         // We need to delay setting the wallpaper a little for Windows
         // or there will be a black screen set.
-        tokio::time::sleep(tokio::time::Duration::from_millis(timeout_millis)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(WALLPAPER_SET_DELAY)).await;
 
         match wallpaper::set_from_path(wallpaper_path.to_str().unwrap()) {
             // Notify user
@@ -581,6 +590,12 @@ fn set_wallpaper_with_delay(timeout_millis: u64, wallpaper_path: PathBuf, ipfs_h
                     "{}{}",
                     "You may find this pollen at: ".yellow(),
                     format!("https://ipfs.io/ipfs/{}", &ipfs_hash)
+                );
+                println!(
+                    "{}{}{}",
+                    "Currently ".yellow(),
+                    processing_pollens_count.to_string().green(),
+                    " pollens are processing..".yellow(),
                 );
             }
             Err(err) => {
@@ -600,6 +615,21 @@ async fn clear_previous_pollens(dir_path: &Path, current_creation_time: &SystemT
                     if current_creation_time.elapsed().unwrap().as_millis()
                         < entry_creation_time.elapsed().unwrap().as_millis()
                     {
+                        #[cfg(target_os = "linux")]
+                        // Needed in Linux because for a split second when the previous
+                        // wallpaper is deleted the screen turns blue.
+                        tokio::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(
+                                WALLPAPER_SET_DELAY + 500,
+                            ))
+                            .await;
+                            // TODO: Handle this result
+                            tokio::fs::remove_file(&path).await;
+                        })
+                        .await?;
+
+                        #[cfg(not(target_os = "linux"))]
+                        // Others are fine with this.
                         tokio::fs::remove_file(&path).await?;
                     }
                 }
@@ -630,6 +660,7 @@ async fn get_model_type_from_pollen_uuid(client: &IpfsClient, pollen_uuid: &str)
     match model_name.as_str() {
         "\"Wiki Art\"" => Some(Model::WikiArt),
         "\"ViT-B/32\"" => Some(Model::VitB32),
+        "\"QoL tweaks for nshepperd…P Guided Diffusion v2.4\"" => Some(Model::GuidedDiffusion),
         _ => {
             // eprintln!("{}{}", "Found unknown model: ".red(), model_name.yellow());
             Some(Model::Unknown)
