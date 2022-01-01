@@ -1,0 +1,7 @@
+# Point to right "strip" for debian packaging.
+
+[target.aarch64-unknown-linux-gnu] 
+strip = { path = "aarch64-unknown-linux-gnu-strip" }
+
+[target.x86_64-unknown-linux-gnu] 
+strip = { path = "x86_64-unknown-linux-gnu-strip" }

@@ -23,3 +23,11 @@ console = "0.15.0"
 crossterm = "0.22.1"
 dirs = "4.0.0"
 wallpaper = { version = "3", features = ["from_url"] }
+
+[package.metadata.deb]
+copyright = "Copyright © 2021, [pollinations-contributors](https://github.com/orgs/pollinations/people)"
+license-file = ["LICENSE"]
+extended-description = """\
+pollenwall subscribes to pollinations.ai ipfs publishing stream\
+and listens for processing and done pollens. Depending on the mode\
+you've chosen when running the app it will set your wallpaper with pollens."""

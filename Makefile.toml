@@ -68,6 +68,9 @@ script = '''
     rm -rf ${OPENSSL_ARM64_PACKAGE_NAME}
     
     cd ..
+
+    # Install dependencies for debian packaging
+    cargo install cargo-deb
 '''
 
 
@@ -165,6 +168,7 @@ dependencies = [
   "build-x86_64-unknown-linux-gnu",
   "build-aarch64-unknown-linux-gnu",
   "compress-linux",
+  "package-linux",
 ]
 
 [tasks.build-x86_64-unknown-linux-gnu]
@@ -233,11 +237,27 @@ dependencies = [
   "compress-aarch64-unknown-linux-gnu",
 ]
 
+[tasks.package-linux]
+dependencies = [
+  "package-debian-x86_64-unknown-linux-gnu",
+  "package-debian-aarch64-unknown-linux-gnu",
+]
+
 [tasks.compress-x86_64-unknown-linux-gnu]
 command = "tar"
 args = ["-zcvf", "target/pollenwall-x86_64-linux.tar.gz", "-C", "target/x86_64-unknown-linux-gnu/release", "pollenwall"]
 
+[tasks.package-debian-x86_64-unknown-linux-gnu]
+command = "cargo"
+args = ["deb", "--target", "x86_64-unknown-linux-gnu", "--no-build"]
+
 [tasks.compress-aarch64-unknown-linux-gnu]
 command = "tar"
 args = ["-zcvf", "target/pollenwall-arm64-linux.tar.gz", "-C", "target/aarch64-unknown-linux-gnu/release", "pollenwall"]
+
+[tasks.package-debian-aarch64-unknown-linux-gnu]
+command = "cargo"
+args = ["deb", "--target", "aarch64-unknown-linux-gnu", "--no-build"]
+
+
 
