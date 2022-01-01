@@ -119,12 +119,12 @@ App folder where `pollenwall` stores the pollens is located in your home directo
 
 ## Road Map
 
-- [ ] Download other artifacts about a done pollen
-- [ ] Show processing pollens in the app output
+- [ ] Download other artifacts about a pollens (in progress)
+- [ ] Show processing pollens in the app output (maybe)
 - [x] Make pollen storage volatile
 - [x] Support Windows
 - [x] Support Linux
-- [ ] Give granular options about which wallpapers to set
+- [x] Add attach to processing pollen mode
 - [ ] Support video or `GIF` wall papers in supported platforms
 - [ ] Add a run at startup option
 - [ ] Publish to package managers for easy installation
