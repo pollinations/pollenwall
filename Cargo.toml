@@ -9,7 +9,7 @@ readme = "README.md"
 homepage = "https://github.com/pollinations/pollenwall"
 repository = "https://github.com/pollinations/pollenwall"
 documentation = "https://github.com/pollinations/pollenwall#readme"
-keywords = ["pollinations", "pollen", "generative art", "ai", "GAN", "cli", "wallpaper"]
+keywords = ["pollinations", "pollen", "generative-art", "ai", "GAN", "cli", "wallpaper"]
 categories = ["command-line-utilities", "ai", "wallpaper", "art"]
 
 [dependencies]
