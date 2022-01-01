@@ -10,7 +10,7 @@ homepage = "https://github.com/pollinations/pollenwall"
 repository = "https://github.com/pollinations/pollenwall"
 documentation = "https://github.com/pollinations/pollenwall#readme"
 keywords = ["pollinations", "pollen", "generative-art", "ai", "wallpaper"]
-categories = ["command-line-utilities", "ai", "wallpaper", "art"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 ipfs-api = "0.14"
