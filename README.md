@@ -90,24 +90,19 @@ Hint: Don't forget to try the attach mode! `pollenwall -a`
 ### Command Line Arguments
 
 ```
-pollenwall [FLAGS] [OPTIONS]
-```
-
-**Flags:**
-
-```
--a, --attach     Attach to a random processing pollen until its evolution is done.
--c, --clean      Remove images in "~/.pollen_wall" directory.
--h, --help       Prints help information
--V, --version    Prints version information
+pollenwall [OPTIONS]
 ```
 
 **Options:**
 
 ```
--a, --address <addr>    You may give a custom address to pollinations ipfs node.
-    --home <home>       If "pollen_wall" couldn't determine your home directory, to help it please run it with
-                        "--home <absolute-path-to-your-home-directory>"
+-a, --attach            Attach to a random processing pollen until its evolution is done.
+    --address <addr>    You may give a custom address to pollinations ipfs node.
+-c, --clean             Remove images in "~/.pollen_wall" directory.
+-h, --help              Print help information
+    --home <home>       If "pollen_wall" couldn't determine your home directory, to help it
+                        please run it with "--home <absolute-path-to-your-home-directory>"
+-V, --version           Print version information
 ```
 
 ## App Folder

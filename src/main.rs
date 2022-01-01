@@ -141,30 +141,30 @@ async fn main() -> Result<()> {
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
-            Arg::with_name("addr")
+            Arg::new("addr")
                 .help("You may give a custom address to pollinations ipfs node.")
                 .long("address")
                 .value_name("addr")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("home")
+            Arg::new("home")
                 .help("If \"pollen_wall\" couldn't determine your home directory, to help it please run it with \"--home <absolute-path-to-your-home-directory>\"")
                 .long("home")
                 .value_name("home")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("clean")
+            Arg::new("clean")
                 .help("Remove images in \"~/.pollen_wall\" directory.")
-                .short("c")
+                .short('c')
                 .long("clean")
                 .takes_value(false),
         )
         .arg(
-            Arg::with_name("attach")
+            Arg::new("attach")
                 .help("Attach to a random processing pollen until its evolution is done.")
-                .short("a")
+                .short('a')
                 .long("attach")
                 .takes_value(false),
         )
