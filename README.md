@@ -5,7 +5,6 @@
 
 - [pollenwall](#pollenwall)
   - [About](#about)
-  - [Support](#support)
   - [Installation](#installation)
     - [Binary releases](#binary-releases)
     - [Build from source](#build-from-source)
@@ -22,11 +21,6 @@
 ## About
 
 **pollenwall** is a little command line app which sets your wallpaper with incoming image generating pollens once they arrive from [pollinations.ai](https://pollinations.ai/c/Anything).
-
-## Support
-
-Currently `pollenwall` only supports x86 and ARM mac computers and x86 Windows computers.
-Support will be expanded in very near future.
 
 ## Installation
 
@@ -90,6 +84,8 @@ Outputs could be found in `target` folder.
 ## Usage
 
 Just run the app, it is as simple as that.
+
+Hint: Don't forget to try the attach mode! `pollenwall -a`
 
 ### Command Line Arguments
 
