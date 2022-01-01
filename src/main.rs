@@ -1,6 +1,6 @@
 mod tui;
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use dirs::home_dir;
 use ipfs_api::{
     response::{BlockStatResponse, FileLsResponse, IpfsHeader},
@@ -9,8 +9,9 @@ use ipfs_api::{
 use multibase::Base;
 use std::{
     collections::HashMap,
-    fs,
+    fs::{self},
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
@@ -37,6 +38,13 @@ enum PollenStatus {
     OnceSetAsWallpaper,
 }
 
+#[derive(Debug, PartialEq)]
+enum Model {
+    WikiArt,
+    VitB32,
+    Unknown,
+}
+
 #[derive(Debug)]
 struct PollenInfo {
     // TODO: Decide if this id is redundant
@@ -44,6 +52,8 @@ struct PollenInfo {
     id: String,
     //
     topic: Topic,
+    model_type: Option<Model>,
+    text_input: Option<String>,
     hash_of_current_iteration: String,
     last_polled_evolution: Option<PolledEvolutionInfo>,
     status: PollenStatus,
@@ -54,6 +64,8 @@ impl Default for PollenInfo {
         PollenInfo {
             id: String::new(),
             topic: Topic::Unknown,
+            model_type: None,
+            text_input: None,
             hash_of_current_iteration: String::new(),
             last_polled_evolution: None,
             status: PollenStatus::Processing,
@@ -63,12 +75,20 @@ impl Default for PollenInfo {
 
 impl PollenInfo {
     #[allow(dead_code)]
-    fn new(id: String, topic: Topic, hash_of_current_iteration: String) -> Self {
+    fn new(
+        id: String,
+        topic: Topic,
+        hash_of_current_iteration: String,
+        model_type: Option<Model>,
+        text_input: Option<String>,
+    ) -> Self {
         Self {
             id,
             topic,
             hash_of_current_iteration,
             last_polled_evolution: None,
+            model_type,
+            text_input,
             status: PollenStatus::Processing,
         }
     }
@@ -77,6 +97,8 @@ impl PollenInfo {
         id: String,
         topic: Topic,
         hash_of_current_iteration: String,
+        model_type: Option<Model>,
+        text_input: Option<String>,
         status: PollenStatus,
     ) -> Self {
         Self {
@@ -84,6 +106,8 @@ impl PollenInfo {
             topic,
             hash_of_current_iteration,
             last_polled_evolution: None,
+            model_type,
+            text_input,
             status,
         }
     }
@@ -118,7 +142,6 @@ async fn main() -> Result<()> {
         .arg(
             Arg::with_name("addr")
                 .help("You may give a custom address to pollinations ipfs node.")
-                .short("a")
                 .long("address")
                 .value_name("addr")
                 .takes_value(true),
@@ -135,6 +158,13 @@ async fn main() -> Result<()> {
                 .help("Remove pollens in \"~/.pollen_wall\" directory.")
                 .short("c")
                 .long("clean")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("attach")
+                .help("Attach to a random processing pollen until its evolution is done.")
+                .short("a")
+                .long("attach")
                 .takes_value(false),
         )
         .get_matches();
@@ -186,7 +216,7 @@ async fn main() -> Result<()> {
     let done_subscription = client.pubsub_sub("done_pollen", true);
     let mut merged = done_subscription.merge(processing_subscription);
     let mut pollens = HashMap::<String, PollenInfo>::new();
-    let mut last_wallpaper_path: Option<PathBuf> = None;
+    let mut pollen_uuid_to_attach: Option<String> = None;
 
     println!(
         "{}{}{}",
@@ -226,20 +256,47 @@ async fn main() -> Result<()> {
                             key: pollen_uuid, ..
                         }) = client.block_stat(&*format!("{}/input", &hash)).await
                         {
+                            let text_input =
+                                get_text_input_from_pollen_uuid(&client, &pollen_uuid).await;
+                            let model_type =
+                                get_model_type_from_pollen_uuid(&client, &pollen_uuid).await;
+
                             if let Some(pollen) = pollens.get_mut(&pollen_uuid) {
                                 // Pollen is being tracked already so update its info
+                                pollen.topic = topic.to_owned();
+                                pollen.hash_of_current_iteration = hash.to_owned();
+                                pollen.model_type = model_type;
+                                pollen.text_input = text_input;
                                 match pollen.status {
                                     // Ignore pollen if it once set as wallpaper
                                     // This would help filtering for duplicate done messages.
                                     PollenStatus::OnceSetAsWallpaper => match topic {
+                                        // Topic::ProcessingPollen => {
+                                        //     // TODO: Additional logic of attaching to a processing pollen may go here.
+                                        //     if matches.is_present("attach") {
+                                        //         if let Some(uuid) = &pollen_uuid_to_attach {
+                                        //             if pollen_uuid != *uuid {
+                                        //                 // Ignore pollens which are not attached.
+                                        //                 // Else even if it has the same uuid set the new evolution state as wallpaper
+                                        //                 continue;
+                                        //             } else {
+                                        //                 // Renew status for keeping it attached
+                                        //                 pollen.status = PollenStatus::Processing;
+                                        //             }
+                                        //         }
+                                        //     }
+                                        // }
                                         Topic::ProcessingPollen => {
-                                            // TODO: Attaching to a processing pollen logic may go here.
+                                            // TODO: Simplify this
+                                            // Pass
                                         }
                                         Topic::DonePollen => {
                                             // Ignore done pollens which had been already set as wallpaper
                                             continue;
                                         }
-                                        _ => unreachable!(),
+                                        _ => {
+                                            unreachable!();
+                                        }
                                     },
                                     // Attaching logic for
                                     _ => {
@@ -250,8 +307,6 @@ async fn main() -> Result<()> {
                                         }
                                     }
                                 }
-                                pollen.topic = topic.to_owned();
-                                pollen.hash_of_current_iteration = hash.to_owned();
                             } else {
                                 // Pollen not tracked yet, store it
                                 // Since it is a done pollen tag it.
@@ -261,6 +316,8 @@ async fn main() -> Result<()> {
                                         pollen_uuid.to_owned(),
                                         topic.to_owned(),
                                         hash.to_owned(),
+                                        model_type,
+                                        text_input,
                                         match topic {
                                             Topic::DonePollen => PollenStatus::Done,
                                             Topic::ProcessingPollen => PollenStatus::Processing,
@@ -272,16 +329,94 @@ async fn main() -> Result<()> {
 
                             // Find the latest evolution (image) of pollen
                             if let Ok(list_of_output_folder) = client.file_ls(&path).await {
-                                // TODO: Check if it could be destructured
                                 if let Some(pollen_header) =
                                     get_the_latest_image_according_to_numbering(
                                         &list_of_output_folder,
                                     )
                                 {
                                     // We know that we have registered that pollen here so we can unwrap
-                                    match pollens.get_mut(&pollen_uuid).unwrap().status {
-                                        PollenStatus::Processing => {}
+                                    let pollen = pollens.get_mut(&pollen_uuid).unwrap();
+                                    match pollen.status {
+                                        PollenStatus::Processing => {
+                                            if matches.is_present("attach") {
+                                                // println!("{:?}", pollen.model_type);
+                                                // println!("{:?}", pollen.text_input);
+
+                                                // Attach to a random processing pollen
+                                                if pollen_uuid_to_attach.is_none() {
+                                                    pollen_uuid_to_attach =
+                                                        Some(pollen_uuid.to_owned());
+                                                }
+                                                // A processing pollen is picked here naturally
+                                                if let Some(uuid) = &pollen_uuid_to_attach {
+                                                    if pollen_uuid == *uuid {
+                                                        // New iteration arrived
+                                                        println!("\n{}", "New generation of attached pollen is arrived!".green());
+                                                        // Save pollen
+                                                        let mut save_path = app_folder_path.clone();
+                                                        save_path.push(&format!(
+                                                            "{}_{}",
+                                                            &pollen_uuid, &pollen_header.name
+                                                        ));
+                                                        let save_time = save_pollen(
+                                                            &client,
+                                                            &pollen_header.hash,
+                                                            &save_path,
+                                                        )
+                                                        .await?;
+
+                                                        // Set wallpaper
+                                                        set_wallpaper_with_delay(
+                                                            WALLPAPER_SET_TIMEOUT,
+                                                            save_path.clone(),
+                                                            pollen_header.hash.to_owned(),
+                                                        );
+
+                                                        // Update pollen info
+                                                        if let Some(PollenInfo {
+                                                            last_polled_evolution,
+                                                            ..
+                                                        }) = pollens.get_mut(&pollen_uuid)
+                                                        {
+                                                            *last_polled_evolution =
+                                                                Some(PolledEvolutionInfo::from(
+                                                                    pollen_header,
+                                                                ));
+                                                        }
+
+                                                        // Keep storage clean
+                                                        if let Some(save_time) = save_time {
+                                                            clear_previous_pollens(
+                                                                &app_folder_path,
+                                                                &save_time,
+                                                            )
+                                                            .await?;
+                                                        }
+                                                    } else {
+                                                        // Ignore pollens which are not attached.
+                                                        continue;
+                                                    }
+                                                } else {
+                                                    // No pollen id to attach..
+                                                    // This might be unreachable
+                                                    continue;
+                                                }
+                                            }
+                                        }
                                         PollenStatus::Done => {
+                                            if matches.is_present("attach") {
+                                                if let Some(uuid) = &pollen_uuid_to_attach {
+                                                    if pollen_uuid == *uuid {
+                                                        // Attached pollen is done
+                                                        // Empty the slot for a new one to attach
+                                                        pollen_uuid_to_attach = None;
+                                                    } else {
+                                                        // Block other done pollens.
+                                                        continue;
+                                                    }
+                                                }
+                                            }
+
                                             println!("\n{}", "Pollen arrived!".green());
 
                                             // Save pollen
@@ -290,8 +425,12 @@ async fn main() -> Result<()> {
                                                 "{}_{}",
                                                 &pollen_uuid, &pollen_header.name
                                             ));
-                                            save_pollen(&client, &pollen_header.hash, &save_path)
-                                                .await?;
+                                            let save_time = save_pollen(
+                                                &client,
+                                                &pollen_header.hash,
+                                                &save_path,
+                                            )
+                                            .await?;
 
                                             // Set wallpaper
                                             set_wallpaper_with_delay(
@@ -312,16 +451,17 @@ async fn main() -> Result<()> {
                                                     Some(PolledEvolutionInfo::from(pollen_header));
                                             }
 
-                                            // Remove previous pollen
-                                            if let Some(last_wallpaper_path) = last_wallpaper_path {
-                                                remove_previous_pollen_from_storage_with_delay(
-                                                    &last_wallpaper_path,
-                                                    WALLPAPER_SET_TIMEOUT + 100,
-                                                );
+                                            // Keep storage clean
+                                            if let Some(save_time) = save_time {
+                                                clear_previous_pollens(
+                                                    &app_folder_path,
+                                                    &save_time,
+                                                )
+                                                .await?;
                                             }
 
-                                            // Set with current wallpaper
-                                            last_wallpaper_path = Some(save_path);
+                                            // Remove from internal store with its uuid.
+                                            pollens.remove_entry(&pollen_uuid);
                                         }
                                         _ => unreachable!(),
                                     }
@@ -370,40 +510,35 @@ fn get_current_topic(topics: &[String]) -> String {
 fn get_the_latest_image_according_to_numbering(
     response: &'_ FileLsResponse,
 ) -> Option<&'_ IpfsHeader> {
-    let result = response
-        .objects
-        .values()
-        .next()
-        .unwrap()
-        .links
-        .iter()
-        .fold(
-            (None, 0_usize),
-            |mut index: (Option<&IpfsHeader>, usize), header| {
-                // Extract the digits from the name which has the format `ccc..._ddddd.jpg` example `processing_00005.jpg`.
-                let extracted: String = header
-                    .name
-                    .chars()
-                    .filter(|c| c.is_numeric() && header.name.contains("progress"))
-                    .collect();
-                if !extracted.is_empty() {
-                    // Parse it as number, we know that it is numeric so unwrap is fine.
-                    let current_index = extracted.parse::<usize>().unwrap();
-                    // Continue folding to find the last one
-                    if current_index > index.1 {
-                        index.1 = current_index;
-                        index.0 = Some(header);
-                    }
+    let (result, _) = response.objects.values().next().unwrap().links.iter().fold(
+        (None, 0_usize),
+        |mut index: (Option<&IpfsHeader>, usize), header| {
+            // Extract the digits from the name which has the format `ccc..._ddddd.jpg` example `processing_00005.jpg`.
+            let extracted: String = header
+                .name
+                .chars()
+                .filter(|c| c.is_numeric() && header.name.contains(".jpg"))
+                .collect();
+            if !extracted.is_empty() {
+                // Parse it as number, we know that it is numeric so unwrap is fine.
+                let current_index = extracted.parse::<usize>().unwrap();
+                // Continue folding to find the last one
+                if current_index > index.1 {
+                    index.1 = current_index;
+                    index.0 = Some(header);
                 }
-                index
-            },
-        )
-        // We only need the header
-        .0;
+            }
+            index
+        },
+    );
     result
 }
 
-async fn save_pollen(client: &IpfsClient, download_hash: &str, save_path: &Path) -> Result<()> {
+async fn save_pollen(
+    client: &IpfsClient,
+    download_hash: &str,
+    save_path: &Path,
+) -> Result<Option<SystemTime>> {
     let mut file = tokio::fs::File::create(save_path).await?;
 
     // TODO: This should be unnecessary learn to use Bytes crate see hack below
@@ -422,11 +557,16 @@ async fn save_pollen(client: &IpfsClient, download_hash: &str, save_path: &Path)
         cnt += 1;
     }
 
+    if let Ok(metadata) = tokio::fs::metadata(save_path).await {
+        if let Ok(created) = metadata.created() {
+            file.shutdown().await?;
+            return Ok(Some(created));
+        }
+    }
     file.shutdown().await?;
-    Ok(())
+    Ok(None)
 }
 
-// TODO: CONTINUE THIS FUNCTION!
 fn set_wallpaper_with_delay(timeout_millis: u64, wallpaper_path: PathBuf, ipfs_hash: String) {
     tokio::spawn(async move {
         // We need to delay setting the wallpaper a little for Windows
@@ -450,20 +590,69 @@ fn set_wallpaper_with_delay(timeout_millis: u64, wallpaper_path: PathBuf, ipfs_h
     });
 }
 
-fn remove_previous_pollen_from_storage_with_delay(last_wallpaper_path: &Path, delay_millis: u64) {
-    // Delete previous pollen which was set as wallpaper
-    // from storage after some time.
-    // This delay is also needed for linux machines.
-    // Don't await this function.
+async fn clear_previous_pollens(dir_path: &Path, current_creation_time: &SystemTime) -> Result<()> {
+    if let Ok(mut directory_reader) = tokio::fs::read_dir(&dir_path).await {
+        while let Ok(Some(entry)) = directory_reader.next_entry().await {
+            let path = entry.path().clone();
 
-    // Copy it because we're going to delay it.
-    let path_to_delete = String::from(last_wallpaper_path.to_string_lossy());
-    tokio::spawn(async move {
-        // Wait a little
-        tokio::time::sleep(tokio::time::Duration::from_millis(delay_millis)).await;
-        // Delete the file.
-        if let Err(err) = tokio::fs::remove_file(path_to_delete).await {
-            eprintln!("{}{}", "Failed to delete previous pollen: ".red(), err,);
+            if let Ok(metadata) = tokio::fs::metadata(&entry.path()).await {
+                if let Ok(entry_creation_time) = metadata.created() {
+                    if current_creation_time.elapsed().unwrap().as_millis()
+                        < entry_creation_time.elapsed().unwrap().as_millis()
+                    {
+                        tokio::fs::remove_file(&path).await?;
+                    }
+                }
+            }
         }
-    });
+        return Ok(());
+    }
+    Err(anyhow!("Failed to read directory"))
+}
+
+async fn get_model_type_from_pollen_uuid(client: &IpfsClient, pollen_uuid: &str) -> Option<Model> {
+    let mut f = client.cat(&format!("{}/model", pollen_uuid));
+    let mut model_name: String = "".into();
+
+    while let Some(Ok(buf)) = f.next().await {
+        // This is somehow ugly, we know that the text is short and most likely
+        // not more than 4096 bytes so one iteration is enough to fill the buffer.
+        // Although this might create bugs later since we're not
+        // controlling the length of the text.
+        model_name = String::from_utf8_lossy(&buf).into();
+    }
+
+    if model_name.is_empty() {
+        // eprintln!("{}", "No model info found".red());
+        return None;
+    }
+
+    match model_name.as_str() {
+        "\"Wiki Art\"" => Some(Model::WikiArt),
+        "\"ViT-B/32\"" => Some(Model::VitB32),
+        _ => {
+            // eprintln!("{}{}", "Found unknown model: ".red(), model_name.yellow());
+            Some(Model::Unknown)
+        }
+    }
+}
+
+async fn get_text_input_from_pollen_uuid(client: &IpfsClient, pollen_uuid: &str) -> Option<String> {
+    let mut f = client.cat(&format!("{}/text_input", pollen_uuid));
+    let mut text_input: String = "".into();
+
+    while let Some(Ok(buf)) = f.next().await {
+        // This is somehow ugly, we know that the text is short and most likely
+        // not more than 4096 bytes so one iteration is enough to fill the buffer.
+        // Although this might create bugs later since we're not
+        // controlling the length of the text.
+        text_input = String::from_utf8_lossy(&buf).into();
+    }
+
+    if text_input.is_empty() {
+        // eprintln!("{}", "No text input found".red());
+        None
+    } else {
+        Some(text_input)
+    }
 }
