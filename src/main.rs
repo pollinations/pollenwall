@@ -307,13 +307,12 @@ fn setup(tui: &Tui) -> Result<PollenWallSetup> {
             after: &str,
             service_type: &str,
             restart_case: &str,
-            user: &str,
             exec_start: &Path,
             args: &str,
             wanted_by: &str,
         ) -> String {
-            format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nRestart={}\nUser={}\nExecStart={} {}\n[Install]\nWantedBy={}\n",
-                description, after, service_type, restart_case, user, exec_start.to_str().unwrap(), args, wanted_by)
+            format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nRestart={}\nExecStart={} {}\n[Install]\nWantedBy={}\n",
+                description, after, service_type, restart_case, exec_start.to_str().unwrap(), args, wanted_by)
         }
         if let Ok(executable_path) = std::env::current_exe() {
             let service = make_systemd_service(
@@ -321,7 +320,6 @@ fn setup(tui: &Tui) -> Result<PollenWallSetup> {
                 "network.target",
                 "simple",
                 "on-failure",
-                &whoami::username(),
                 &executable_path,
                 if let Some(args) = args.value_of("generate-service") { 
                     args
