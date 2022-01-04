@@ -34,7 +34,7 @@ impl Tui {
 
     pub fn app_folder_not_found(&self) -> Result<()> {
         self.write_line(
-            format!("{} App folder \"~/.pollen_wall\" was not found. \"pollenwall\" has created it for you.", BEE)[..].yellow(),
+            format!("{} App folder \"~/.pollenwall\" was not found. \"pollenwall\" has created it for you.", BEE)[..].yellow(),
         )?;
         Ok(())
     }

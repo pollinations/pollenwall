@@ -7,19 +7,21 @@ use ipfs_api::{
     IpfsApi, IpfsClient, TryFromUri,
 };
 use multibase::Base;
+use serde::{ser::SerializeStruct, Serialize};
 use std::{
     collections::HashMap,
     fs::{self},
     path::{Path, PathBuf},
-    time::SystemTime,
+    process::Command,
+    time::SystemTime, vec,
 };
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
 
-use clap::{App, Arg};
+use clap::{App, Arg, ArgMatches};
 use crossterm::style::Stylize;
 use tui::{Tui, BEE, BRUSH};
-const APP_FOLDER_NAME: &str = ".pollen_wall";
+const APP_FOLDER_NAME: &str = ".pollenwall";
 const DEFAULT_POLLINATIONS_MULTIADDR: &str = "/ip4/65.108.44.19/tcp/5005";
 const WALLPAPER_SET_DELAY: u64 = 100;
 const HEARTBEAT: &str = "HEARTBEAT";
@@ -45,6 +47,8 @@ enum Model {
     GuidedDiffusion,
     Unknown,
 }
+#[derive(Debug)]
+struct PollenWallSetup(PathBuf, String, bool, PathBuf);
 
 #[derive(Debug)]
 struct PollenInfo {
@@ -137,8 +141,14 @@ impl From<&IpfsHeader> for PolledEvolutionInfo {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Args and tui
-    let matches = App::new(env!("CARGO_PKG_NAME"))
+    let tui = Tui::new();
+    tui.hide_cursor()?;
+    run(setup(&tui)?).await?;
+    Ok(())
+}
+
+fn get_command_line_args() -> ArgMatches {
+    App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::new("addr")
@@ -149,14 +159,14 @@ async fn main() -> Result<()> {
         )
         .arg(
             Arg::new("home")
-                .help("If \"pollen_wall\" couldn't determine your home directory, to help it please run it with \"--home <absolute-path-to-your-home-directory>\"")
+                .help("If \"pollenwall\" couldn't determine your home directory, to help it please run it with \"--home <absolute-path-to-your-home-directory>\"")
                 .long("home")
                 .value_name("home")
                 .takes_value(true),
         )
         .arg(
             Arg::new("clean")
-                .help("Remove images in \"~/.pollen_wall\" directory.")
+                .help("Remove images in \"~/.pollenwall\" directory.")
                 .short('c')
                 .long("clean")
                 .takes_value(false),
@@ -168,16 +178,23 @@ async fn main() -> Result<()> {
                 .long("attach")
                 .takes_value(false),
         )
-        .get_matches();
+        .arg(
+            Arg::new("generate-service")
+                .long("generate-service")
+                .default_missing_value("")
+                .takes_value(true),
+        )
+        .get_matches()
+}
 
-    let tui = Tui::new();
-    tui.hide_cursor()?;
+fn setup(tui: &Tui) -> Result<PollenWallSetup> {
+    let args = get_command_line_args();
 
     // Try to discover user's home directory
     let home = match home_dir() {
         Some(dir) => dir,
         None => {
-            if let Some(path) = matches.value_of("home") {
+            if let Some(path) = args.value_of("home") {
                 PathBuf::from(path)
             } else {
                 tui.clear_lines(1)?;
@@ -190,29 +207,151 @@ async fn main() -> Result<()> {
 
     if !app_folder_path.exists() {
         tui.app_folder_not_found()?;
-        // Create ~/.pollen_wall
+        // Create ~/.pollenwall
         fs::create_dir_all(&app_folder_path)?;
-    }
-
-    // Clean ~/.pollen_wall folder
-    if matches.is_present("clean") {
-        // Some cleaning..
-        fs::remove_dir_all(&app_folder_path)?;
-        fs::create_dir_all(&app_folder_path)?;
-
-        println!("{}{}{}", BRUSH, " Cleaned all pollens! ".green(), BRUSH,);
     }
 
     // Set pollinations address
-    let mut mutltiaddr = DEFAULT_POLLINATIONS_MULTIADDR;
-    if matches.is_present("addr") {
-        if let Some(addr) = matches.value_of("addr") {
-            mutltiaddr = addr;
-        }
+    let mutltiaddr = if let Some(addr) = args.value_of("addr") {
+        addr
+    } else {
+        DEFAULT_POLLINATIONS_MULTIADDR
+    };
+
+    let attach_mode = args.is_present("attach");
+
+    // Clean ~/.pollenwall folder
+    if args.is_present("clean") {
+        fs::remove_dir_all(&app_folder_path)?;
+        fs::create_dir_all(&app_folder_path)?;
+        println!(
+            "{}{}{}",
+            BRUSH,
+            " Cleaned ~/.pollenwall folder! ".green(),
+            BRUSH,
+        );
     }
 
+    if args.is_present("generate-service") {
+        // #[cfg(target_os = "mac")]
+        // {
+        #[derive(Serialize)]
+        #[serde(rename_all = "PascalCase")]
+        struct LaunchAgentMac {
+            label: &'static str,
+            program: String,
+            // Content
+            program_arguments: Vec<String>,
+            // Details
+            run_at_load: bool,
+            // ?
+            limit_load_to_session_type: &'static str,
+            standard_out_path: String,
+            standard_error_path: String,
+            // PathState ? dict?
+            keep_alive: KeepAliveOptionsMac,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "PascalCase")]
+        struct KeepAliveOptionsMac {
+            successful_exit:bool,
+        }
+
+        if let Ok(executable_path) = std::env::current_exe() {
+
+            let args_string: String = args.value_of("generate-service").unwrap().into();
+        
+            
+            let mut args_vec = vec![executable_path.to_string_lossy().into()];
+            args_string.split(' ').for_each(|s| if !s.is_empty() {args_vec.push(s.to_string())});
+
+
+            let service = LaunchAgentMac {
+                label: "com.pollinations.pollenwall",
+                program: executable_path.to_string_lossy().into(),
+                program_arguments: args_vec,
+                run_at_load: true,
+                limit_load_to_session_type: "Aqua",
+                standard_out_path: app_folder_path
+                    .join("pollenwall_service.log")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                standard_error_path: app_folder_path
+                    .join("pollenwall_service.log")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                keep_alive: KeepAliveOptionsMac {
+                    successful_exit: false,
+                },
+                
+            };
+            plist::to_file_xml("./com.pollinations.pollenwall.plist", &service)?;
+        } else {
+            bail!(
+                "{}",
+                "Couldn't get current executable path, please try again.".red()
+            );
+        }
+    }
+    // #[cfg(target_os = "linux")]
+    {
+        fn make_systemd_service(
+            description: &str,
+            after: &str,
+            service_type: &str,
+            restart_case: &str,
+            user: &str,
+            exec_start: &Path,
+            args: &str,
+            wanted_by: &str,
+        ) -> String {
+            format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nRestart={}\nUser={}\nExecStart={} {}\n[Install]\nWantedBy={}\n",
+                description, after, service_type, restart_case, user, exec_start.to_str().unwrap(), args, wanted_by)
+        }
+        if let Ok(executable_path) = std::env::current_exe() {
+            let service = make_systemd_service(
+                "\"This service will set your wallpaper with pollens incoming from pollinations.ai\"",
+                "network.target",
+                "simple",
+                "on-failure",
+                &whoami::username(),
+                &executable_path,
+                if let Some(args) = args.value_of("generate-service") { 
+                    args
+                }
+                else {
+                    ""
+                }, 
+                "multi-user.target",
+            );
+
+            // Generally figure this loading service and decide the user logic out.
+            // Explain user
+            // Set permissions
+            std::fs::write(app_folder_path.join("pollenwall.service"), service)?;
+        } else {
+            bail!(
+                "{}",
+                "Couldn't get current executable path, please try again.".red()
+            );
+        }
+        // }
+    }
+
+    Ok(PollenWallSetup(
+        app_folder_path,
+        mutltiaddr.into(),
+        attach_mode,
+        home,
+    ))
+}
+
+async fn run(setup: PollenWallSetup) -> Result<()> {
     // Init
-    let client = IpfsClient::from_multiaddr_str(mutltiaddr).unwrap();
+    let PollenWallSetup(app_folder_path, multiaddr, attach_mode, _home) = setup;
+    let client = IpfsClient::from_multiaddr_str(&multiaddr).unwrap();
     let processing_subscription = client.pubsub_sub("processing_pollen", true);
     let done_subscription = client.pubsub_sub("done_pollen", true);
     let mut merged = done_subscription.merge(processing_subscription);
@@ -238,7 +377,7 @@ async fn main() -> Result<()> {
                         let hash = msg;
 
                         // Path for the current pollen output
-                        let path = format!("/ipfs/{}/output", &hash);
+                        let path_to_current_pollen_output = format!("/ipfs/{}/output", &hash);
 
                         // Unwrap is safe here because there will always be a topic.
                         let topic = match &*get_current_topic(&res.topic_ids.unwrap()) {
@@ -329,7 +468,9 @@ async fn main() -> Result<()> {
                             }
 
                             // Find the latest evolution (image) of pollen
-                            if let Ok(list_of_output_folder) = client.file_ls(&path).await {
+                            if let Ok(list_of_output_folder) =
+                                client.file_ls(&path_to_current_pollen_output).await
+                            {
                                 if let Some(pollen_header) =
                                     get_the_latest_image_according_to_numbering(
                                         &list_of_output_folder,
@@ -343,7 +484,7 @@ async fn main() -> Result<()> {
                                     let pollen = pollens.get_mut(&pollen_uuid).unwrap();
                                     match pollen.status {
                                         PollenStatus::Processing => {
-                                            if matches.is_present("attach") {
+                                            if attach_mode {
                                                 // println!("{:?}", pollen.model_type);
                                                 // println!("{:?}", pollen.text_input);
 
@@ -409,7 +550,7 @@ async fn main() -> Result<()> {
                                             }
                                         }
                                         PollenStatus::Done => {
-                                            if matches.is_present("attach") {
+                                            if attach_mode {
                                                 if let Some(uuid) = &pollen_uuid_to_attach {
                                                     if pollen_uuid == *uuid {
                                                         // Attached pollen is done
@@ -611,26 +752,34 @@ async fn clear_previous_pollens(dir_path: &Path, current_creation_time: &SystemT
             let path = entry.path().clone();
 
             if let Ok(metadata) = tokio::fs::metadata(&entry.path()).await {
-                if let Ok(entry_creation_time) = metadata.created() {
-                    if current_creation_time.elapsed().unwrap().as_millis()
-                        < entry_creation_time.elapsed().unwrap().as_millis()
-                    {
-                        #[cfg(target_os = "linux")]
-                        // Needed in Linux because for a split second when the previous
-                        // wallpaper is deleted the screen turns blue.
-                        tokio::spawn(async move {
-                            tokio::time::sleep(tokio::time::Duration::from_millis(
-                                WALLPAPER_SET_DELAY + 500,
-                            ))
-                            .await;
-                            // TODO: Handle this result
-                            tokio::fs::remove_file(&path).await;
-                        })
-                        .await?;
+                if metadata.is_file() {
+                    if let Ok(entry_creation_time) = metadata.created() {
+                        if current_creation_time.elapsed().unwrap().as_millis()
+                            < entry_creation_time.elapsed().unwrap().as_millis()
+                        {
+                             if let Some(ex) = path.extension() {
+                                 // TODO: This might be extended
+                                 if ex == "jpg" {
+                                    #[cfg(target_os = "linux")]
+                                    // Needed in Linux because for a split second when the previous
+                                    // wallpaper is deleted the screen turns blue.
+                                    tokio::spawn(async move {
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(
+                                            WALLPAPER_SET_DELAY + 500,
+                                        ))
+                                        .await;
+                                        // TODO: Handle this result
+                                        tokio::fs::remove_file(&path).await;
+                                    })
+                                    .await?;
 
-                        #[cfg(not(target_os = "linux"))]
-                        // Others are fine with this.
-                        tokio::fs::remove_file(&path).await?;
+                                    #[cfg(not(target_os = "linux"))]
+                                    // Others are fine with this.
+                                    tokio::fs::remove_file(&path).await?;
+
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -687,3 +836,63 @@ async fn get_text_input_from_pollen_uuid(client: &IpfsClient, pollen_uuid: &str)
         Some(text_input)
     }
 }
+
+// if matches.is_present("debug") {
+//     // mac
+//     #[derive(Serialize)]
+//     #[serde(rename_all = "PascalCase")]
+//     struct LaunchAgentMac {
+//         label: String,
+//         program: String,
+//         // Content
+//         program_arguments: Vec<String>,
+//         // Details
+//         run_at_load: bool,
+//         // ?
+//         limit_load_to_session_type: String,
+//         standard_out_path: String,
+//         standard_error_path: String,
+//         // ?
+//         start_interval: i32,
+//         // ?
+//         // PathState ? dict?
+//         keep_alive: bool,
+//         // ? Adaptive?
+//         process_type: String,
+//     }
+
+//     // // use plist::ser::Serializer;
+//     // if let Err(e) = plist::to_file_xml("./hello.plist", &s) {
+//     //     dbg!(e);
+//     // }
+
+//     // linux
+//     fn make_systemd_service(
+//         description: &str,
+//         after: &str,
+//         service_type: &str,
+//         restart_case: &str,
+//         user: &str,
+//         exec_start: &str,
+//         wanted_by: &str,
+//     ) -> String {
+//         format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nRestart={}\nUser={}\nExecStart={}\n[Install]\nWantedBy={}\n",
+//         description, after, service_type, restart_case, user, exec_start, wanted_by)
+//     }
+//     let s = make_systemd_service(
+//         "This service will set your wallpaper with pollens incoming from pollinations.ai",
+//         "network.target",
+//         "simple",
+//         "on-failure",
+//         "",
+//         "",
+//         "multi-user.target",
+//     );
+//     // testing
+//     std::fs::write("./ttt.service", s);
+
+//     // windows
+
+//     // Only for debugging
+//     return Ok(());
+// }

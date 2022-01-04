@@ -98,16 +98,16 @@ pollenwall [OPTIONS]
 ```
 -a, --attach            Attach to a random processing pollen until its evolution is done.
     --address <addr>    You may give a custom address to pollinations ipfs node.
--c, --clean             Remove images in "~/.pollen_wall" directory.
+-c, --clean             Remove images in "~/.pollenwall" directory.
 -h, --help              Print help information
-    --home <home>       If "pollen_wall" couldn't determine your home directory, to help it
+    --home <home>       If "pollenwall" couldn't determine your home directory, to help it
                         please run it with "--home <absolute-path-to-your-home-directory>"
 -V, --version           Print version information
 ```
 
 ## App Folder
 
-App folder where `pollenwall` stores the pollens is located in your home directory with the name `.pollen_wall`.
+App folder where `pollenwall` stores the pollens is located in your home directory with the name `.pollenwall`.
 
 ## Road Map
 
