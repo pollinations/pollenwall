@@ -233,8 +233,13 @@ fn setup(tui: &Tui) -> Result<PollenWallSetup> {
     }
 
     if args.is_present("generate-service") {
-        // #[cfg(target_os = "mac")]
-        // {
+    
+    #[cfg(not(target_os = "linux"))] 
+    #[cfg(not(target_os = "macos"))]  {
+        // TODO: Tell user that it is not available 
+    }
+    
+    #[cfg(target_os = "macos")] {       
         #[derive(Serialize)]
         #[serde(rename_all = "PascalCase")]
         struct LaunchAgentMac {
@@ -295,7 +300,7 @@ fn setup(tui: &Tui) -> Result<PollenWallSetup> {
             );
         }
     }
-    // #[cfg(target_os = "linux")]
+    #[cfg(target_os = "linux")]
     {
         fn make_systemd_service(
             description: &str,
@@ -337,8 +342,8 @@ fn setup(tui: &Tui) -> Result<PollenWallSetup> {
                 "Couldn't get current executable path, please try again.".red()
             );
         }
-        // }
     }
+}
 
     Ok(PollenWallSetup(
         app_folder_path,
@@ -837,62 +842,3 @@ async fn get_text_input_from_pollen_uuid(client: &IpfsClient, pollen_uuid: &str)
     }
 }
 
-// if matches.is_present("debug") {
-//     // mac
-//     #[derive(Serialize)]
-//     #[serde(rename_all = "PascalCase")]
-//     struct LaunchAgentMac {
-//         label: String,
-//         program: String,
-//         // Content
-//         program_arguments: Vec<String>,
-//         // Details
-//         run_at_load: bool,
-//         // ?
-//         limit_load_to_session_type: String,
-//         standard_out_path: String,
-//         standard_error_path: String,
-//         // ?
-//         start_interval: i32,
-//         // ?
-//         // PathState ? dict?
-//         keep_alive: bool,
-//         // ? Adaptive?
-//         process_type: String,
-//     }
-
-//     // // use plist::ser::Serializer;
-//     // if let Err(e) = plist::to_file_xml("./hello.plist", &s) {
-//     //     dbg!(e);
-//     // }
-
-//     // linux
-//     fn make_systemd_service(
-//         description: &str,
-//         after: &str,
-//         service_type: &str,
-//         restart_case: &str,
-//         user: &str,
-//         exec_start: &str,
-//         wanted_by: &str,
-//     ) -> String {
-//         format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nRestart={}\nUser={}\nExecStart={}\n[Install]\nWantedBy={}\n",
-//         description, after, service_type, restart_case, user, exec_start, wanted_by)
-//     }
-//     let s = make_systemd_service(
-//         "This service will set your wallpaper with pollens incoming from pollinations.ai",
-//         "network.target",
-//         "simple",
-//         "on-failure",
-//         "",
-//         "",
-//         "multi-user.target",
-//     );
-//     // testing
-//     std::fs::write("./ttt.service", s);
-
-//     // windows
-
-//     // Only for debugging
-//     return Ok(());
-// }
