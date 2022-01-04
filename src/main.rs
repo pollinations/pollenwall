@@ -23,7 +23,7 @@ use crossterm::style::Stylize;
 use tui::{Tui, BEE, BRUSH};
 const APP_FOLDER_NAME: &str = ".pollenwall";
 const DEFAULT_POLLINATIONS_MULTIADDR: &str = "/ip4/65.108.44.19/tcp/5005";
-const WALLPAPER_SET_DELAY: u64 = 100;
+const WALLPAPER_SET_DELAY: u64 = 500;
 const HEARTBEAT: &str = "HEARTBEAT";
 
 #[derive(Debug, PartialEq, Clone)]
@@ -306,19 +306,21 @@ fn setup(tui: &Tui) -> Result<PollenWallSetup> {
             description: &str,
             after: &str,
             service_type: &str,
+            start_timeout: usize,
             restart_case: &str,
             exec_start: &Path,
             args: &str,
             wanted_by: &str,
         ) -> String {
-            format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nRestart={}\nExecStart={} {}\n[Install]\nWantedBy={}\n",
-                description, after, service_type, restart_case, exec_start.to_str().unwrap(), args, wanted_by)
+            format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nExecStartPre=/bin/sleep {}\nRestart={}\nExecStart={} {}\n[Install]\nWantedBy={}\n",
+                description, after, service_type, start_timeout, restart_case, exec_start.to_str().unwrap(), args, wanted_by)
         }
         if let Ok(executable_path) = std::env::current_exe() {
             let service = make_systemd_service(
-                "\"This service will set your wallpaper with pollens incoming from pollinations.ai\"",
-                "network.target",
+                "\"Sets your wallpaper with pollens incoming from pollinations.ai\"",
+                "network-online.target",
                 "simple",
+                30,
                 "on-failure",
                 &executable_path,
                 if let Some(args) = args.value_of("generate-service") { 
@@ -327,7 +329,7 @@ fn setup(tui: &Tui) -> Result<PollenWallSetup> {
                 else {
                     ""
                 }, 
-                "multi-user.target",
+                "default.target",
             );
 
             // Generally figure this loading service and decide the user logic out.
@@ -726,6 +728,7 @@ fn set_wallpaper_with_delay(
         // or there will be a black screen set.
         tokio::time::sleep(tokio::time::Duration::from_millis(WALLPAPER_SET_DELAY)).await;
 
+        dbg!(wallpaper_path.to_str());
         match wallpaper::set_from_path(wallpaper_path.to_str().unwrap()) {
             // Notify user
             Ok(_) => {
