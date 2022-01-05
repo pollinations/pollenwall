@@ -181,6 +181,7 @@ fn get_command_line_args() -> ArgMatches {
         )
         .arg(
             Arg::new("generate-service")
+                .help("Generates a service file depending on the platform and saves it to \"~/.pollenwall\" folder.")
                 .long("generate-service")
                 .default_missing_value("")
                 .takes_value(true),
