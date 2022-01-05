@@ -10,6 +10,9 @@
     - [Build from source](#build-from-source)
   - [Usage](#usage)
     - [Command Line Arguments](#command-line-arguments)
+    - [Running as a service](#running-as-a-service)
+      - [MacOS](#macos)
+      - [Linux](#linux)
   - [App Folder](#app-folder)
   - [Road Map](#road-map)
   - [Changelog](#changelog)
@@ -103,6 +106,117 @@ pollenwall [OPTIONS]
     --home <home>       If "pollenwall" couldn't determine your home directory, to help it
                         please run it with "--home <absolute-path-to-your-home-directory>"
 -V, --version           Print version information
+```
+
+### Running as a service
+
+Currently only macos and linux is supported for this mode.
+
+To run pollenwall in the background as a user service first generate the service with,
+
+```bash
+# With no arguments,
+pollenwall --generate-service
+# If you would like to give pollenwall arguments
+pollenwall --generate-service="<space-separated-args>"
+# Example (running in attach mode)
+pollenwall --generate-service="-a"
+```
+
+You'll find the generated service located in `~/.pollenwall`
+
+#### MacOS
+
+To register the service to run at startup please paste this script to your terminal and run it,
+
+```bash
+cd ~/.pollenwall &&
+# Copy to a location where systemd can see it
+cp com.pollinations.pollenwall.plist ~/Library/LaunchAgents &&
+# Enable the service to run at startup
+launchctl load ~/Library/LaunchAgents/com.pollinations.pollenwall.plist
+```
+
+To remove the service from startup please run,
+
+```bash
+# Disable service to run at startup
+launchctl unload ~/Library/LaunchAgents/com.pollinations.pollenwall.plist &&
+# Remove the service
+rm ~/Library/LaunchAgents/com.pollinations.pollenwall.plist
+```
+
+While the service is running you may use these commands to control the service,
+
+Start
+
+```bash
+launchctl start com.pollinations.pollenwall
+```
+
+Stop
+
+```bash
+launchctl stop com.pollinations.pollenwall
+```
+
+Restart
+
+```bash
+launchctl restart com.pollinations.pollenwall
+```
+
+Trace logs
+
+```bash
+tail -f ~/.pollenwall/com.pollinations.pollenwall.log
+```
+
+#### Linux
+
+To register the service to run at startup please paste this script to your terminal and run it,
+
+```bash
+cd ~/.pollenwall &&
+# Copy to a location where systemd can see it
+sudo cp pollenwall.service /etc/systemd/user &&
+# Enable the service to run at startup
+systemctl --user enable pollenwall.service
+```
+
+To remove the service from startup please run,
+
+```bash
+# Disable service to run at startup
+systemctl --user disable pollenwall.service &&
+# Remove the service
+sudo rm /etc/systemd/user/pollenwall.service
+```
+
+While the service is running you may use these commands to control the service,
+
+Start
+
+```bash
+systemctl --user start pollenwall.service
+```
+
+Stop
+
+```bash
+systemctl --user stop pollenwall.service
+```
+
+Restart
+
+```bash
+systemctl --user restart pollenwall.service
+```
+
+Trace logs
+
+```bash
+sudo tail -f /var/log/syslog
 ```
 
 ## App Folder

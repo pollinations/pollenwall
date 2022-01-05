@@ -13,7 +13,8 @@ use std::{
     fs::{self},
     path::{Path, PathBuf},
     process::Command,
-    time::SystemTime, vec,
+    time::SystemTime,
+    vec,
 };
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
@@ -233,117 +234,120 @@ fn setup(tui: &Tui) -> Result<PollenWallSetup> {
     }
 
     if args.is_present("generate-service") {
-    
-    #[cfg(not(target_os = "linux"))] 
-    #[cfg(not(target_os = "macos"))]  {
-        // TODO: Tell user that it is not available 
-    }
-    
-    #[cfg(target_os = "macos")] {       
-        #[derive(Serialize)]
-        #[serde(rename_all = "PascalCase")]
-        struct LaunchAgentMac {
-            label: &'static str,
-            program: String,
-            // Content
-            program_arguments: Vec<String>,
-            // Details
-            run_at_load: bool,
-            // ?
-            limit_load_to_session_type: &'static str,
-            standard_out_path: String,
-            standard_error_path: String,
-            // PathState ? dict?
-            keep_alive: KeepAliveOptionsMac,
-        }
-        #[derive(Serialize)]
-        #[serde(rename_all = "PascalCase")]
-        struct KeepAliveOptionsMac {
-            successful_exit:bool,
+        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(target_os = "macos"))]
+        {
+            // TODO: Tell user that it is not available
         }
 
-        if let Ok(executable_path) = std::env::current_exe() {
+        #[cfg(target_os = "macos")]
+        {
+            #[derive(Serialize)]
+            #[serde(rename_all = "PascalCase")]
+            struct LaunchAgentMac {
+                label: &'static str,
+                program: String,
+                // Content
+                program_arguments: Vec<String>,
+                // Details
+                run_at_load: bool,
+                // ?
+                limit_load_to_session_type: &'static str,
+                standard_out_path: String,
+                standard_error_path: String,
+                // PathState ? dict?
+                keep_alive: KeepAliveOptionsMac,
+            }
+            #[derive(Serialize)]
+            #[serde(rename_all = "PascalCase")]
+            struct KeepAliveOptionsMac {
+                successful_exit: bool,
+            }
 
-            let args_string: String = args.value_of("generate-service").unwrap().into();
-        
-            
-            let mut args_vec = vec![executable_path.to_string_lossy().into()];
-            args_string.split(' ').for_each(|s| if !s.is_empty() {args_vec.push(s.to_string())});
+            if let Ok(executable_path) = std::env::current_exe() {
+                let args_string: String = args.value_of("generate-service").unwrap().into();
 
+                let mut args_vec = vec![executable_path.to_string_lossy().into()];
+                args_string.split(' ').for_each(|s| {
+                    if !s.is_empty() {
+                        args_vec.push(s.to_string())
+                    }
+                });
 
-            let service = LaunchAgentMac {
-                label: "com.pollinations.pollenwall",
-                program: executable_path.to_string_lossy().into(),
-                program_arguments: args_vec,
-                run_at_load: true,
-                limit_load_to_session_type: "Aqua",
-                standard_out_path: app_folder_path
-                    .join("pollenwall_service.log")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                standard_error_path: app_folder_path
-                    .join("pollenwall_service.log")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                keep_alive: KeepAliveOptionsMac {
-                    successful_exit: false,
-                },
-                
-            };
-            plist::to_file_xml("./com.pollinations.pollenwall.plist", &service)?;
-        } else {
-            bail!(
-                "{}",
-                "Couldn't get current executable path, please try again.".red()
-            );
+                let service = LaunchAgentMac {
+                    label: "com.pollinations.pollenwall",
+                    program: executable_path.to_string_lossy().into(),
+                    program_arguments: args_vec,
+                    run_at_load: true,
+                    limit_load_to_session_type: "Aqua",
+                    standard_out_path: app_folder_path
+                        .join("com.pollinations.pollenwall.log")
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                    standard_error_path: app_folder_path
+                        .join("com.pollinations.pollenwall.log")
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                    keep_alive: KeepAliveOptionsMac {
+                        successful_exit: false,
+                    },
+                };
+                plist::to_file_xml(
+                    app_folder_path.join("com.pollinations.pollenwall.plist"),
+                    &service,
+                )?;
+            } else {
+                bail!(
+                    "{}",
+                    "Couldn't get current executable path, please try again.".red()
+                );
+            }
         }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        fn make_systemd_service(
-            description: &str,
-            after: &str,
-            service_type: &str,
-            start_timeout: usize,
-            restart_case: &str,
-            exec_start: &Path,
-            args: &str,
-            wanted_by: &str,
-        ) -> String {
-            format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nExecStartPre=/bin/sleep {}\nRestart={}\nExecStart={} {}\n[Install]\nWantedBy={}\n",
+        #[cfg(target_os = "linux")]
+        {
+            fn make_systemd_service(
+                description: &str,
+                after: &str,
+                service_type: &str,
+                start_timeout: usize,
+                restart_case: &str,
+                exec_start: &Path,
+                args: &str,
+                wanted_by: &str,
+            ) -> String {
+                format!("[Unit]\nDescription={}\nAfter={}\n[Service]\nType={}\nExecStartPre=/bin/sleep {}\nRestart={}\nExecStart={} {}\n[Install]\nWantedBy={}\n",
                 description, after, service_type, start_timeout, restart_case, exec_start.to_str().unwrap(), args, wanted_by)
-        }
-        if let Ok(executable_path) = std::env::current_exe() {
-            let service = make_systemd_service(
-                "\"Sets your wallpaper with pollens incoming from pollinations.ai\"",
-                "network-online.target",
-                "simple",
-                30,
-                "on-failure",
-                &executable_path,
-                if let Some(args) = args.value_of("generate-service") { 
-                    args
-                }
-                else {
-                    ""
-                }, 
-                "default.target",
-            );
+            }
+            if let Ok(executable_path) = std::env::current_exe() {
+                let service = make_systemd_service(
+                    "\"Sets your wallpaper with pollens incoming from pollinations.ai\"",
+                    "network-online.target",
+                    "simple",
+                    30,
+                    "on-failure",
+                    &executable_path,
+                    if let Some(args) = args.value_of("generate-service") {
+                        args
+                    } else {
+                        ""
+                    },
+                    "default.target",
+                );
 
-            // Generally figure this loading service and decide the user logic out.
-            // Explain user
-            // Set permissions
-            std::fs::write(app_folder_path.join("pollenwall.service"), service)?;
-        } else {
-            bail!(
-                "{}",
-                "Couldn't get current executable path, please try again.".red()
-            );
+                // Generally figure this loading service and decide the user logic out.
+                // Explain user
+                // Set permissions
+                std::fs::write(app_folder_path.join("pollenwall.service"), service)?;
+            } else {
+                bail!(
+                    "{}",
+                    "Couldn't get current executable path, please try again.".red()
+                );
+            }
         }
     }
-}
 
     Ok(PollenWallSetup(
         app_folder_path,
@@ -763,9 +767,9 @@ async fn clear_previous_pollens(dir_path: &Path, current_creation_time: &SystemT
                         if current_creation_time.elapsed().unwrap().as_millis()
                             < entry_creation_time.elapsed().unwrap().as_millis()
                         {
-                             if let Some(ex) = path.extension() {
-                                 // TODO: This might be extended
-                                 if ex == "jpg" {
+                            if let Some(ex) = path.extension() {
+                                // TODO: This might be extended
+                                if ex == "jpg" {
                                     #[cfg(target_os = "linux")]
                                     // Needed in Linux because for a split second when the previous
                                     // wallpaper is deleted the screen turns blue.
@@ -782,7 +786,6 @@ async fn clear_previous_pollens(dir_path: &Path, current_creation_time: &SystemT
                                     #[cfg(not(target_os = "linux"))]
                                     // Others are fine with this.
                                     tokio::fs::remove_file(&path).await?;
-
                                 }
                             }
                         }
@@ -842,4 +845,3 @@ async fn get_text_input_from_pollen_uuid(client: &IpfsClient, pollen_uuid: &str)
         Some(text_input)
     }
 }
-
